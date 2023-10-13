@@ -1,0 +1,10 @@
+
+.vs/
+
+TestHarness/bin/
+
+TestHarness/obj/
+
+NTDLS.ExpressionParser/bin/
+
+NTDLS.ExpressionParser/obj/
