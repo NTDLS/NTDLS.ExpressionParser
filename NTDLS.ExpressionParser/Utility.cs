@@ -2,6 +2,7 @@
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
@@ -81,12 +82,23 @@ namespace NTDLS.ExpressionParser
 
         internal static string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
         {
-            if (startIndex < 0 || startIndex >= original.Length || endIndex < 0 || endIndex >= original.Length)
+            var builder = new StringBuilder();
+
+            for (int i = 0; i < startIndex; i++)
             {
-                throw new ArgumentOutOfRangeException("startIndex and endIndex must be within the valid range of the string.");
+                builder.Append(original[i]);
             }
 
-            return original.Substring(0, startIndex) + replacement + original.Substring(endIndex + 1);
+            builder.Append(replacement);
+
+            for (int i = endIndex + 1; i < original.Length; i++)
+            {
+                builder.Append(original[i]);
+            }
+
+            //Old Version: return original.Substring(0, startIndex) + replacement + original.Substring(endIndex + 1);
+
+            return builder.ToString();
         }
 
         internal static bool IsIntegerExclusive(string value) => (new string[] { "&", "|", "^", "&=", "|=", "^=", "<<", ">>" }).Contains(value);
