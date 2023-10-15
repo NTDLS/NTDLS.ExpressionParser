@@ -1,7 +1,5 @@
 ﻿using System.Numerics;
-using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace NTDLS.ExpressionParser
@@ -80,6 +78,11 @@ namespace NTDLS.ExpressionParser
 
         internal static bool IsNativeFunction(string value) => NativeFunnctions.Contains(value);
 
+        internal static string ReplaceRange_0(string original, int startIndex, int endIndex, string replacement)
+        {
+            return original.Substring(0, startIndex) + replacement + original.Substring(endIndex + 1);
+        }
+
         internal static string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
         {
             var builder = new StringBuilder();
@@ -96,9 +99,31 @@ namespace NTDLS.ExpressionParser
                 builder.Append(original[i]);
             }
 
-            //Old Version: return original.Substring(0, startIndex) + replacement + original.Substring(endIndex + 1);
-
             return builder.ToString();
+        }
+
+        internal static string ReplaceRange_2(string original, int startIndex, int endIndex, string replacement)
+        {
+            var buffer = new char[500]; //TODO: determine size.
+
+            int wPos = 0;
+
+            for (int i = 0; i < startIndex; i++)
+            {
+                buffer[wPos++] = original[i];
+            }
+
+            foreach (var c in replacement)
+            {
+                buffer[wPos++] = c;
+            }
+
+            for (int i = endIndex + 1; i < original.Length; i++)
+            {
+                buffer[wPos++] = original[i];
+            }
+
+            return new string(buffer, 0, wPos);
         }
 
         internal static bool IsIntegerExclusive(string value) => (new string[] { "&", "|", "^", "&=", "|=", "^=", "<<", ">>" }).Contains(value);
@@ -386,6 +411,21 @@ namespace NTDLS.ExpressionParser
             if (length > 0 && span[0] == '-')
             {
                 return -result;
+            }
+            return result;
+        }
+
+        public static int StringToUint(ReadOnlySpan<char> span)
+        {
+            int result = 0;
+            int length = span.Length;
+
+            for (int i = 0; i < length; i++)
+            {
+                if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
+                {
+                    result = result * 10 + (span[i] - '0');
+                }
             }
             return result;
         }

@@ -170,7 +170,9 @@
 
         internal void ReplaceRange(int startIndex, int endIndex, double value)
         {
-            Text = Utility.ReplaceRange(Text, startIndex, endIndex, value.ToString());
+            string cacheKey = _parentExpression.GetNextComputedCacheKey();
+            _parentExpression.ComputedCache.Add(value);
+            Text = Utility.ReplaceRange(Text, startIndex, endIndex, cacheKey);
         }
 
         /// <summary>
@@ -210,7 +212,7 @@
 
             for (; i > -1; i--)
             {
-                if (((Text[i] - '0') >= 0 && (Text[i] - '0') <= 9) || Text[i] == '.')
+                if (((Text[i] - '0') >= 0 && (Text[i] - '0') <= 9) || Text[i] == '.' || Text[i] == '$')
                 {
                 }
                 else if (Text[i] == '-' || Text[i] == '+')
@@ -235,16 +237,24 @@
             }
 
             outParsedLength = (operationIndex - 1) - i;
+            string value = Text.Substring(i + 1, outParsedLength);
 
-            return Utility.StringToDouble(Text.Substring(i + 1, outParsedLength));
+            if (value[0] == '$')
+            {
+                int index = Utility.StringToUint(value.Substring(1, outParsedLength - 2));
+                return _parentExpression.ComputedCache[index];
+            }
+
+            return Utility.StringToDouble(value);
         }
 
         private double GetRightValue(int endOfOperationIndex, out int outParsedLength)
         {
             int i = endOfOperationIndex;
+
             for (; i < Text.Length; i++)
             {
-                if (i == endOfOperationIndex && (Text[i] == '-' || Text[i] == '+'))
+                if (i == endOfOperationIndex && (Text[i] == '-' || Text[i] == '+') || Text[i] == '$')
                 {
                 }
                 else if (((Text[i] - '0') >= 0 && (Text[i] - '0') <= 9) || (Text[i] == '.'))
@@ -257,7 +267,15 @@
             }
 
             outParsedLength = i - endOfOperationIndex;
-            return Utility.StringToDouble(Text.Substring(endOfOperationIndex, outParsedLength));
+
+            string value = Text.Substring(endOfOperationIndex, outParsedLength);
+            if (value[0] == '$')
+            {
+                int index = Utility.StringToUint(value.Substring(1, outParsedLength - 2));
+                return _parentExpression.ComputedCache[index];
+            }
+
+            return Utility.StringToDouble(value);
         }
 
         private int GetFreestandingNotOperation(out string outFoundOperation) //Pre order.

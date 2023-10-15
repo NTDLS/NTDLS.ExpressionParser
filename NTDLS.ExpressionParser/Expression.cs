@@ -9,8 +9,15 @@
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
         internal Dictionary<string, CustomFunction> CustomFunctions { get; private set; } = new();
-
         public delegate double CustomFunction(double[] parameters);
+
+        public List<double> ComputedCache { get; private set; } = new();
+
+        private int _nextComputedCacheKeyValue = 0;
+        public string GetNextComputedCacheKey()
+        {
+            return "$" + _nextComputedCacheKeyValue++ + "$";
+        }
 
         public Expression(string text)
         {
@@ -31,13 +38,22 @@
                 ReplaceRange(startIndex, endIndex, resultString);
             }
 
+            if (WorkingText[0] == '$')
+            {
+                int index = Utility.StringToUint(WorkingText.Substring(1, WorkingText.Length - 2));
+                return ComputedCache[index];
+            }
+
             return Utility.StringToDouble(WorkingText);
         }
 
         internal void ResetWorkingText()
         {
             //Start with a clean copy of the suppled expression text.
+            _nextComputedCacheKeyValue = 0;
             WorkingText = Text;
+
+            ComputedCache.Clear();
 
             //Swap out all of the user supplied parameters.
             foreach (var variable in DiscoveredVariables)
