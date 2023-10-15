@@ -18,6 +18,22 @@
             ValidateParentheses(text);
         }
 
+        public double Evaluate()
+        {
+            ResetWorkingText();
+
+            bool isComplete = false;
+
+            while (isComplete == false)
+            {
+                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
+                var resultString = subExpression.Compute();
+                ReplaceRange(startIndex, endIndex, resultString);
+            }
+
+            return Utility.StringToDouble(WorkingText);
+        }
+
         internal void ResetWorkingText()
         {
             //Start with a clean copy of the suppled expression text.
@@ -61,7 +77,7 @@
         /// Gets a sub-expression from WorkingText and replaces it with a token.
         /// </summary>
         /// <returns></returns>
-        internal SubExpression AcquireSubexpression(out int outStartIndex, out int outEndIndex)
+        internal bool AcquireSubexpression(out int outStartIndex, out int outEndIndex, out SubExpression outSubExpression)
         {
             int lastParenIndex = WorkingText.LastIndexOf('(');
 
@@ -112,15 +128,19 @@
                 }
 
                 outEndIndex = i;
+
+                outSubExpression = new SubExpression(this, subExpression);
+                return false;
             }
             else
             {
                 outStartIndex = 0;
                 outEndIndex = WorkingText.Length - 1;
                 subExpression = WorkingText;
-            }
 
-            return new SubExpression(this, subExpression);
+                outSubExpression = new SubExpression(this, subExpression);
+                return true;
+            }
         }
 
         internal void ReplaceRange(int startIndex, int endIndex, string value)

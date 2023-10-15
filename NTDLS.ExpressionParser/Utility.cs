@@ -1,4 +1,7 @@
 ﻿using System.Numerics;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace NTDLS.ExpressionParser
 {
@@ -327,6 +330,52 @@ namespace NTDLS.ExpressionParser
                 default:
                     throw new Exception($"Undefiend native function: {functionName}");
             }
+        }
+
+        public static double StringToDouble(ReadOnlySpan<char> span)
+        {
+            double result = 0.0;
+            int length = span.Length;
+            int i = 0;
+
+            if (length > 0 && span[0] == '-')
+            {
+                i++;
+            }
+
+            for (; i < length; i++)
+            {
+                if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
+                {
+                    result = result * 10.0 + (span[i] - '0');
+                }
+                else if (span[i] == '.')
+                {
+                    i++; //Skip the decimal point.
+
+                    double fraction = 0.0;
+                    double multiplier = 1.0;
+
+                    for (; i < length; i++)
+                    {
+                        if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
+                        {
+                            fraction = fraction * 10.0 + (span[i] - '0');
+                            multiplier *= 0.1;
+                        }
+                        else throw new FormatException("Invalid character in input string.");
+                    }
+
+                    result += fraction * multiplier;
+                }
+                else throw new FormatException("Invalid character in input string.");
+            }
+
+            if (length > 0 && span[0] == '-')
+            {
+                return -result;
+            }
+            return result;
         }
     }
 }

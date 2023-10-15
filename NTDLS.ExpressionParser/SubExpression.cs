@@ -52,7 +52,7 @@
                     {
                         var subExpression = new SubExpression(_parentExpression, buffer);
                         subExpression.Compute();
-                        parameters.Add(double.Parse(subExpression.Text));
+                        parameters.Add(Utility.StringToDouble(subExpression.Text));
                         buffer = string.Empty;
                     }
                     else if (Text[i] == '{')
@@ -70,7 +70,7 @@
 
                         var subExpression = new SubExpression(_parentExpression, buffer);
                         subExpression.Compute();
-                        parameters.Add(double.Parse(subExpression.Text));
+                        parameters.Add(Utility.StringToDouble(subExpression.Text));
 
                         break;
                     }
@@ -206,33 +206,27 @@
 
         private double GetLeftValue(int operationIndex, out int outParsedLength)
         {
-            string buffer = string.Empty;
+            int i = operationIndex - 1;
 
-            for (int i = operationIndex - 1; i > -1; i--)
+            for (; i > -1; i--)
             {
-                if (char.IsNumber(Text[i]) || Text[i] == '.')
+                if (((Text[i] - '0') >= 0 && (Text[i] - '0') <= 9) || Text[i] == '.')
                 {
-                    if (Text[i] == '-' || Text[i] == '+')
-                    {
-                        if (i == 0) //The first character is a + or -, this is a valid explicit positive or negative.
-                        {
-                            break;
-                        }
-                    }
-
-                    buffer += Text[i];
                 }
                 else if (Text[i] == '-' || Text[i] == '+')
                 {
                     if (i == 0)
                     {
-                        break; //The first character is a + or -, this is a valid explicit positive or negative.
+                        //The first character is a + or -, this is a valid explicit positive or negative.
                     }
-                    if (Utility.IsMathChar(Text[i - 1]))
+                    else if (Utility.IsMathChar(Text[i - 1]))
                     {
-                        break; //The next character to the left is a match, this is a valid explicit positive or negative.
+                        //The next character to the left is a match, this is a valid explicit positive or negative.
                     }
-                    buffer += Text[i];
+                    else
+                    {
+                        break;
+                    }
                 }
                 else
                 {
@@ -240,32 +234,21 @@
                 }
             }
 
-            buffer = new string(buffer.ToArray().Reverse().ToArray());
+            outParsedLength = (operationIndex - 1) - i;
 
-            if (Utility.IsNumeric(buffer) == false)
-            {
-                throw new Exception($"Invalid right-hand value {buffer}");
-            }
-
-            outParsedLength = buffer.Length;
-
-            return double.Parse(buffer);
+            return Utility.StringToDouble(Text.Substring(i + 1, outParsedLength));
         }
 
         private double GetRightValue(int endOfOperationIndex, out int outParsedLength)
         {
-            string buffer = string.Empty;
-
-            for (int i = endOfOperationIndex; i < Text.Length; i++)
+            int i = endOfOperationIndex;
+            for (; i < Text.Length; i++)
             {
                 if (i == endOfOperationIndex && (Text[i] == '-' || Text[i] == '+'))
                 {
-                    //Explicit positive or negative number.
-                    buffer += Text[i];
                 }
-                else if (char.IsNumber(Text[i]) || Text[i] == '.')
+                else if (((Text[i] - '0') >= 0 && (Text[i] - '0') <= 9) || (Text[i] == '.'))
                 {
-                    buffer += Text[i];
                 }
                 else
                 {
@@ -273,14 +256,8 @@
                 }
             }
 
-            if (Utility.IsNumeric(buffer) == false)
-            {
-                throw new Exception($"Invalid right-hand value {buffer}");
-            }
-
-            outParsedLength = buffer.Length;
-
-            return double.Parse(buffer);
+            outParsedLength = i - endOfOperationIndex;
+            return Utility.StringToDouble(Text.Substring(endOfOperationIndex, outParsedLength));
         }
 
         private int GetFreestandingNotOperation(out string outFoundOperation) //Pre order.
@@ -301,7 +278,7 @@
 
         private int GetIndexOfOperation(char[] validOperations, out string outFoundOperation)
         {
-            for (int i = 0; i < Text.Length; i++)
+            for (int i = 1; i < Text.Length; i++)
             {
                 if (validOperations.Contains(Text[i]))
                 {
@@ -321,8 +298,8 @@
 
             foreach (var operation in validOperations)
             {
-                int index = Text.IndexOf(operation);
-                if (index >= 0 && (foundIndex < 0 || index < foundIndex))
+                int index = Text.IndexOf(operation, 1);
+                if (index >= 1 && (foundIndex < 0 || index < foundIndex))
                 {
                     foundIndex = index;
                     foundOperation = operation;
