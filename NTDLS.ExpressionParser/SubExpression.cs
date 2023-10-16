@@ -70,7 +70,9 @@
 
                         var subExpression = new SubExpression(_parentExpression, buffer);
                         subExpression.Compute();
-                        parameters.Add(Utility.StringToDouble(subExpression.Text));
+
+                        var param = _parentExpression.ExpToDouble(subExpression.Text);
+                        parameters.Add(param);
 
                         break;
                     }

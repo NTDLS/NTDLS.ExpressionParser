@@ -25,11 +25,43 @@ namespace NTDLS.ExpressionParser
             ComputedCache = new double[_operationCount];
         }
 
+        public static double Evaluate(string expression, out string showWork) => new Expression(expression).Evaluate(out showWork);
         public static double Evaluate(string expression) => new Expression(expression).Evaluate();
         public void AddParameter(string name, double value) => _definedParameters.Add(name, value);
         public void ClearParameters() => _definedParameters.Clear();
         public void AddFunction(string name, CustomFunction function) => CustomFunctions.Add(name.ToLower(), function);
         public void ClearFunction() => CustomFunctions.Clear();
+
+        private string SwapInCacheValues(string text)
+        {
+            string copy = new string(text);
+
+            while (true)
+            {
+                int indexOfDollar = copy.IndexOf("$");
+
+                if (indexOfDollar >= 0)
+                {
+                    string buffer = string.Empty;
+
+                    for (int i = indexOfDollar + 1; copy[i] != '$' && i < copy.Length; i++)
+                    {
+                        buffer += copy[i];
+                    }
+                    indexOfDollar++;// Skip the $
+
+                    int index = Utility.StringToUint(buffer);
+                    copy = copy.Replace($"${buffer}$", ComputedCache[index].ToString());
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+
+            return copy;
+        }
 
         public double Evaluate()
         {
@@ -40,10 +72,8 @@ namespace NTDLS.ExpressionParser
             {
                 //Get a sub-expression from the whole expression.
                 isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
-
                 //Compute the sub-expression.
                 var resultString = subExpression.Compute();
-
                 //Replace the sub-expresison in the whole expression with the result from the sub-expression computation.
                 WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
@@ -54,6 +84,45 @@ namespace NTDLS.ExpressionParser
                 return ComputedCache[index];
             }
 
+            return Utility.StringToDouble(WorkingText);
+        }
+
+        public double Evaluate(out string showWork)
+        {
+            ResetState();
+
+            StringBuilder work = new();
+
+            work.AppendLine("{");
+
+            bool isComplete;
+            do
+            {
+                //Get a sub-expression from the whole expression.
+                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
+
+                string friendlySubExpression = SwapInCacheValues(subExpression.Text);
+                work.Append("    " + friendlySubExpression);
+
+                //Compute the sub-expression.
+                var resultString = subExpression.Compute();
+
+                work.AppendLine($" = {SwapInCacheValues(resultString)}");
+
+                //Replace the sub-expresison in the whole expression with the result from the sub-expression computation.
+                WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
+            } while (!isComplete);
+
+            work.AppendLine($"}} = {SwapInCacheValues(WorkingText)}");
+
+            if (WorkingText[0] == '$')
+            {
+                int index = Utility.StringToUint(WorkingText.AsSpan(1, WorkingText.Length - 2));
+                showWork = work.ToString();
+                return ComputedCache[index];
+            }
+
+            showWork = work.ToString();
             return Utility.StringToDouble(WorkingText);
         }
 
@@ -76,6 +145,15 @@ namespace NTDLS.ExpressionParser
             }
         }
 
+        public double ExpToDouble(string exp)
+        {
+            if (exp[0] == '$')
+            {
+                int index = Utility.StringToUint(exp.AsSpan(1, exp.Length - 2));
+                return ComputedCache[index];
+            }
+            return Utility.StringToDouble(exp);
+        }
 
         internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
         {
@@ -271,6 +349,7 @@ namespace NTDLS.ExpressionParser
                     {
                         result += functionOrVariableName; //Append the function name to the expression.
 
+                        _operationCount++;
                         DiscoveredFunctions.Add(functionOrVariableName);
 
                         string functionExpression = string.Empty;
@@ -324,6 +403,7 @@ namespace NTDLS.ExpressionParser
                     {
                         result += functionOrVariableName; //Append the function name to the expression.
 
+                        _operationCount++;
                         DiscoveredVariables.Add(functionOrVariableName);
                     }
                 }

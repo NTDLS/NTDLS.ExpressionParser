@@ -6,6 +6,8 @@ namespace TestApp.CSharp
     {
         static void Main()
         {
+            var result = Expression.Evaluate("10 * ((5 + 1000 + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10", out string work);
+            Console.WriteLine(work);
 
 
             //("10 * ((5 + extra + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10": 5,086,050 when "extra" is 1000
@@ -43,8 +45,9 @@ namespace TestApp.CSharp
             string strExpr = "10 * ((5 + 1000 + ( 10 )) *  60.5) * 10"; //Need to hit 160ms with 100000 iterations
 
             var ntdlsExpression = new Expression(strExpr);
+
             DateTime startDate = DateTime.Now;
-            for (int i = 0; i < 100000; i++)
+            //for (int i = 0; i < 100000; i++)
             {
                 ntdlsExpression.Evaluate();
             }
