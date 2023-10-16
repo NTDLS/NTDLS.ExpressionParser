@@ -11,18 +11,19 @@
     <GenerateDocumentationFile>False</GenerateDocumentationFile>
     <Copyright>Copyright © 2023 NetworkDLS</Copyright>
     <Description>
-      Expression parser for .net. Supports expression nesting, custom variables, custom functions as well as a ton of built in functions.
+      A mathematics parsing engine for .net. It supports expression nesting, custom variables, custom functions all standard mathematical operations for integer, decimal (floating point), logic and bitwise.
+      It addition to the custom functions and variables, these are built in: ACOS, ASIN, ATAN, ATAN2, LDEXP, SINH, COSH, TANH, LOG, LOG10, EXP, MODPOW, SQRT, POW, FLOOR, CEIL, NOT, AVG, SUM, TAN, ATAN, SIN, COS, ABS.
     </Description>
     <PackageProjectUrl>https://github.com/NTDLS/NTDLS.ExpressionParser</PackageProjectUrl>
     <RepositoryUrl>https://github.com/NTDLS/NTDLS.ExpressionParser</RepositoryUrl>
     <PackageTags>expression-parser;math;math-parser;expression;equation;mathematics</PackageTags>
-    <PackageReleaseNotes>Initial public release.</PackageReleaseNotes>
+    <PackageReleaseNotes>Added computation cache, lots and lots of performance enhancements.</PackageReleaseNotes>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <Company>NetworkDLS</Company>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <FileVersion>1.0.0</FileVersion>
-    <VersionPrefix>1.0.0</VersionPrefix>
+    <AssemblyVersion>1.1.0</AssemblyVersion>
+    <FileVersion>1.1.0</FileVersion>
+    <VersionPrefix>1.1.0</VersionPrefix>
     <version></version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>128.png</PackageIcon>
