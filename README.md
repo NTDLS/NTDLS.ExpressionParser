@@ -1,5 +1,13 @@
 # NTDLS.ExpressionParser
-Expression parser for .net. Supports expression nesting, custom variables, custom functions as well as a ton of built in functions.
+ExpressionParser is a mathematics parsing engine for .net. It supports expression nesting, custom variables, custom functions all standard mathematical operations for integer, decimal (floating point), logic and bitwise.
+
+It addition to the custom functions and variables, these are built in: ACOS, ASIN, ATAN, ATAN2, LDEXP, SINH, COSH, TANH, LOG, LOG10, EXP, MODPOW, SQRT, POW, FLOOR, CEIL, NOT, AVG, SUM, TAN, ATAN, SIN, COS, ABS.
+
+If you can for the C++ verison you can find it at: https://github.com/NTDLS/CMathParser
+
+Also be sure to check out the NuGet package at https://www.nuget.org/packages/NTDLS.ExpressionParser/
+
+Basic example usage:
 
 Be sure to check out the NuGet pacakge: https://www.nuget.org/packages/NTDLS.ExpressionParser/
 
