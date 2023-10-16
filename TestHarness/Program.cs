@@ -26,7 +26,7 @@ namespace TestApp.CSharp
                             return sum;
                         });
             */
-
+            /*
             var expression = new Expression("10 * ((5 + 1000 + ( 10 + !0 )) + 60.5) * 10");
             //var expression = new Expression("-10+50");
 
@@ -38,6 +38,19 @@ namespace TestApp.CSharp
             Console.WriteLine($"NTDLS: {(DateTime.Now - startDate).TotalMilliseconds}");
 
             //Console.WriteLine($"Result: {result}");
+            */
+
+            string strExpr = "10 * ((5 + 1000 + ( 10 )) *  60.5) * 10"; //Need to hit 160ms with 100000 iterations
+
+            var ntdlsExpression = new Expression(strExpr);
+            DateTime startDate = DateTime.Now;
+            for (int i = 0; i < 100000; i++)
+            {
+                ntdlsExpression.Evaluate();
+            }
+            Console.WriteLine($"NTDLS: {(DateTime.Now - startDate).TotalMilliseconds}");
+            Console.ReadLine();
+
         }
     }
 }

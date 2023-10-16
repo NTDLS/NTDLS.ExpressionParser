@@ -1,6 +1,4 @@
 ﻿using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
@@ -77,62 +75,13 @@ namespace NTDLS.ExpressionParser
         };
 
         internal static bool IsNativeFunction(string value) => NativeFunnctions.Contains(value);
-
-        internal static string ReplaceRange_0(string original, int startIndex, int endIndex, string replacement)
-        {
-            return original.Substring(0, startIndex) + replacement + original.Substring(endIndex + 1);
-        }
-
-        internal static string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
-        {
-            var builder = new StringBuilder();
-
-            for (int i = 0; i < startIndex; i++)
-            {
-                builder.Append(original[i]);
-            }
-
-            builder.Append(replacement);
-
-            for (int i = endIndex + 1; i < original.Length; i++)
-            {
-                builder.Append(original[i]);
-            }
-
-            return builder.ToString();
-        }
-
-        internal static string ReplaceRange_2(string original, int startIndex, int endIndex, string replacement)
-        {
-            var buffer = new char[500]; //TODO: determine size.
-
-            int wPos = 0;
-
-            for (int i = 0; i < startIndex; i++)
-            {
-                buffer[wPos++] = original[i];
-            }
-
-            foreach (var c in replacement)
-            {
-                buffer[wPos++] = c;
-            }
-
-            for (int i = endIndex + 1; i < original.Length; i++)
-            {
-                buffer[wPos++] = original[i];
-            }
-
-            return new string(buffer, 0, wPos);
-        }
-
         internal static bool IsIntegerExclusive(string value) => (new string[] { "&", "|", "^", "&=", "|=", "^=", "<<", ">>" }).Contains(value);
         internal static bool IsMathChar(char value) => (new char[] { '*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~' }).Contains(value);
         internal static bool IsValidChar(char value) => Char.IsNumber(value) || IsMathChar(value) || value == '.' || value == '(' || value == ')';
         internal static bool IsValidVariableChar(char value) => Char.IsNumber(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
         internal static bool IsNumeric(string sText) => IsNumeric(sText, out bool _);
 
-        internal static bool IsNumeric(string sText, out bool isFloatingPoint)
+        internal static bool IsNumeric(ReadOnlySpan<char> sText, out bool isFloatingPoint)
         {
 
             int iRPos = 0;

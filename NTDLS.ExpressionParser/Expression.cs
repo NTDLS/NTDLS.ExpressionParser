@@ -1,4 +1,6 @@
-﻿namespace NTDLS.ExpressionParser
+﻿using System.Text;
+
+namespace NTDLS.ExpressionParser
 {
     public class Expression
     {
@@ -89,6 +91,28 @@
             CustomFunctions.Clear();
         }
 
+        internal StringBuilder _replaceRangeBuilder = new();
+
+        internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
+        {
+            _replaceRangeBuilder.Clear();
+            int i;
+
+            for (i = 0; i < startIndex; i++)
+            {
+                _replaceRangeBuilder.Append(original[i]);
+            }
+
+            _replaceRangeBuilder.Append(replacement);
+
+            for (i = endIndex + 1; i < original.Length; i++)
+            {
+                _replaceRangeBuilder.Append(original[i]);
+            }
+
+            return _replaceRangeBuilder.ToString();
+        }
+
         /// <summary>
         /// Gets a sub-expression from WorkingText and replaces it with a token.
         /// </summary>
@@ -161,7 +185,7 @@
 
         internal void ReplaceRange(int startIndex, int endIndex, string value)
         {
-            WorkingText = Utility.ReplaceRange(WorkingText, startIndex, endIndex, value);
+            WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, value);
         }
 
         internal string Sanitize(string expressionText)

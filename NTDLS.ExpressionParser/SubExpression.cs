@@ -172,7 +172,7 @@
         {
             string cacheKey = _parentExpression.GetNextComputedCacheKey();
             _parentExpression.ComputedCache.Add(value);
-            Text = Utility.ReplaceRange(Text, startIndex, endIndex, cacheKey);
+            Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);
         }
 
         /// <summary>
@@ -314,13 +314,13 @@
             int foundIndex = -1;
             string foundOperation = string.Empty;
 
-            foreach (var operation in validOperations)
+            for (int i = 0; i < validOperations.Length; i++)
             {
-                int index = Text.IndexOf(operation, 1);
+                int index = Text.IndexOf(validOperations[i], 1);
                 if (index >= 1 && (foundIndex < 0 || index < foundIndex))
                 {
                     foundIndex = index;
-                    foundOperation = operation;
+                    foundOperation = validOperations[i];
                 }
             }
 
