@@ -5,31 +5,40 @@ namespace NTDLS.ExpressionParser
     public class Expression
     {
         private readonly Dictionary<string, double> _definedParameters = new();
+        private readonly StringBuilder _replaceRangeBuilder = new();
+        private int _nextComputedCacheIndex = 0;
+        private int _operationCount = 0;
 
         internal string Text { get; private set; } = string.Empty;
         internal string WorkingText { get; set; } = string.Empty;
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
         internal Dictionary<string, CustomFunction> CustomFunctions { get; private set; } = new();
+        internal double[] ComputedCache;
+
         public delegate double CustomFunction(double[] parameters);
 
-        public List<double> ComputedCache { get; private set; } = new();
-
-        private int _nextComputedCacheKeyValue = 0;
-        public string GetNextComputedCacheKey()
+        internal int GetNextComputedCacheIndex()
         {
-            return "$" + _nextComputedCacheKeyValue++ + "$";
+            return _nextComputedCacheIndex++;
         }
 
         public Expression(string text)
         {
             Text = Sanitize(text.ToLower());
-            ValidateParentheses(text);
+
+            ComputedCache = new double[_operationCount];
         }
+
+        public static double Evaluate(string expression) => new Expression(expression).Evaluate();
+        public void AddParameter(string name, double value) => _definedParameters.Add(name, value);
+        public void ClearParameters() => _definedParameters.Clear();
+        public void AddFunction(string name, CustomFunction function) => CustomFunctions.Add(name.ToLower(), function);
+        public void ClearFunction() => CustomFunctions.Clear();
 
         public double Evaluate()
         {
-            ResetWorkingText();
+            ResetState();
 
             bool isComplete = false;
 
@@ -37,7 +46,7 @@ namespace NTDLS.ExpressionParser
             {
                 isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
                 var resultString = subExpression.Compute();
-                ReplaceRange(startIndex, endIndex, resultString);
+                WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
             }
 
             if (WorkingText[0] == '$')
@@ -49,13 +58,10 @@ namespace NTDLS.ExpressionParser
             return Utility.StringToDouble(WorkingText);
         }
 
-        internal void ResetWorkingText()
+        internal void ResetState()
         {
-            //Start with a clean copy of the suppled expression text.
-            _nextComputedCacheKeyValue = 0;
-            WorkingText = Text;
-
-            ComputedCache.Clear();
+            _nextComputedCacheIndex = 0;
+            WorkingText = Text; //Start with a pre-santitized/validated copy of the supplied expression text.
 
             //Swap out all of the user supplied parameters.
             foreach (var variable in DiscoveredVariables)
@@ -71,27 +77,6 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        public void AddParameter(string name, double value)
-        {
-            _definedParameters.Add(name, value);
-        }
-
-        public void ClearParameters()
-        {
-            _definedParameters.Clear();
-        }
-
-        public void AddFunction(string name, CustomFunction function)
-        {
-            CustomFunctions.Add(name.ToLower(), function);
-        }
-
-        public void ClearFunction()
-        {
-            CustomFunctions.Clear();
-        }
-
-        internal StringBuilder _replaceRangeBuilder = new();
 
         internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
         {
@@ -183,11 +168,6 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        internal void ReplaceRange(int startIndex, int endIndex, string value)
-        {
-            WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, value);
-        }
-
         internal string Sanitize(string expressionText)
         {
             string result = string.Empty;
@@ -203,8 +183,9 @@ namespace NTDLS.ExpressionParser
                 }
                 else if (expressionText[i] == ',')
                 {
-                    if (scope > 0)
+                    if (scope == 0)
                     {
+                        throw new Exception("Unexpected comma found in expression.");
                     }
 
                     result += expressionText[i++];
@@ -212,6 +193,7 @@ namespace NTDLS.ExpressionParser
                 }
                 else if (expressionText[i] == '(')
                 {
+                    _operationCount++;
                     scope++;
                     result += expressionText[i++];
                     continue;
@@ -230,6 +212,7 @@ namespace NTDLS.ExpressionParser
                 }
                 else if (Utility.IsMathChar(expressionText[i]))
                 {
+                    _operationCount++;
                     result += expressionText[i++];
                     continue;
                 }
@@ -357,33 +340,6 @@ namespace NTDLS.ExpressionParser
             }
 
             return result;
-        }
-
-        internal static void ValidateParentheses(string expressionText)
-        {
-            int scope = 0;
-
-            for (int i = 0; i < expressionText.Length; i++)
-            {
-                if (scope < 0)
-                {
-                    throw new Exception("Parenthesis scope fell below zero.");
-                }
-
-                if (expressionText[i] == '(')
-                {
-                    scope++;
-                }
-                else if (expressionText[i] == ')')
-                {
-                    scope--;
-                }
-            }
-
-            if (scope != 0)
-            {
-                throw new Exception("Expression contains an unmatched parenthesis.");
-            }
         }
     }
 }

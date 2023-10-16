@@ -170,9 +170,9 @@
 
         internal void ReplaceRange(int startIndex, int endIndex, double value)
         {
-            string cacheKey = _parentExpression.GetNextComputedCacheKey();
-            _parentExpression.ComputedCache.Add(value);
-            Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);
+            int index = _parentExpression.GetNextComputedCacheIndex();
+            _parentExpression.ComputedCache[index] = value;
+            Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, "$" + index + "$");
         }
 
         /// <summary>
