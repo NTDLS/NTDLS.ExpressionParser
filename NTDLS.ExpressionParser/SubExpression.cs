@@ -165,12 +165,20 @@
                 break;
             }
 
-            return Text; //This should be a number at this point, we are going to defer validating/parsing it for performance reasons.
+            if (Text[0] == '$')
+            {
+                //We already have this value in the cache.
+                return Text;
+            }
+
+            int index = _parentExpression.ConsumeNextComputedCacheIndex();
+            _parentExpression.ComputedCache[index] = Utility.StringToDouble(Text);
+            return "$" + index + "$";
         }
 
         internal void ReplaceRange(int startIndex, int endIndex, double value)
         {
-            int index = _parentExpression.GetNextComputedCacheIndex();
+            int index = _parentExpression.ConsumeNextComputedCacheIndex();
             _parentExpression.ComputedCache[index] = value;
             Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, "$" + index + "$");
         }
@@ -241,7 +249,7 @@
 
             if (value[0] == '$')
             {
-                int index = Utility.StringToUint(value.Substring(1, outParsedLength - 2));
+                int index = Utility.StringToUint(value.AsSpan(1, outParsedLength - 2));
                 return _parentExpression.ComputedCache[index];
             }
 
@@ -271,7 +279,7 @@
             string value = Text.Substring(endOfOperationIndex, outParsedLength);
             if (value[0] == '$')
             {
-                int index = Utility.StringToUint(value.Substring(1, outParsedLength - 2));
+                int index = Utility.StringToUint(value.AsSpan(1, outParsedLength - 2));
                 return _parentExpression.ComputedCache[index];
             }
 

@@ -4,6 +4,8 @@ namespace NTDLS.ExpressionParser
 {
     public class Expression
     {
+        public delegate double CustomFunction(double[] parameters);
+
         private readonly Dictionary<string, double> _definedParameters = new();
         private readonly StringBuilder _replaceRangeBuilder = new();
         private int _nextComputedCacheIndex = 0;
@@ -14,19 +16,12 @@ namespace NTDLS.ExpressionParser
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
         internal Dictionary<string, CustomFunction> CustomFunctions { get; private set; } = new();
-        internal double[] ComputedCache;
-
-        public delegate double CustomFunction(double[] parameters);
-
-        internal int GetNextComputedCacheIndex()
-        {
-            return _nextComputedCacheIndex++;
-        }
+        internal double[] ComputedCache { get; private set; }
+        internal int ConsumeNextComputedCacheIndex() => _nextComputedCacheIndex++;
 
         public Expression(string text)
         {
             Text = Sanitize(text.ToLower());
-
             ComputedCache = new double[_operationCount];
         }
 
@@ -40,18 +35,22 @@ namespace NTDLS.ExpressionParser
         {
             ResetState();
 
-            bool isComplete = false;
-
-            while (isComplete == false)
+            bool isComplete;
+            do
             {
+                //Get a sub-expression from the whole expression.
                 isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
+
+                //Compute the sub-expression.
                 var resultString = subExpression.Compute();
+
+                //Replace the sub-expresison in the whole expression with the result from the sub-expression computation.
                 WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
-            }
+            } while (!isComplete);
 
             if (WorkingText[0] == '$')
             {
-                int index = Utility.StringToUint(WorkingText.Substring(1, WorkingText.Length - 2));
+                int index = Utility.StringToUint(WorkingText.AsSpan(1, WorkingText.Length - 2));
                 return ComputedCache[index];
             }
 

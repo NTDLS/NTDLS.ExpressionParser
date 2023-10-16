@@ -40,8 +40,6 @@ namespace TestApp.CSharp
             //Console.WriteLine($"Result: {result}");
             */
 
-            var result = Expression.Evaluate("10 * 10 * -10 * 11");
-
             string strExpr = "10 * ((5 + 1000 + ( 10 )) *  60.5) * 10"; //Need to hit 160ms with 100000 iterations
 
             var ntdlsExpression = new Expression(strExpr);
