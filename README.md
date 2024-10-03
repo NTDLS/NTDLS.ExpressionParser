@@ -6,7 +6,7 @@ ExpressionParser is a mathematics parsing engine for .net. It supports expressio
 
 It addition to the custom functions and variables, these are built in: ACOS, ASIN, ATAN, ATAN2, LDEXP, SINH, COSH, TANH, LOG, LOG10, EXP, MODPOW, SQRT, POW, FLOOR, CEIL, NOT, AVG, SUM, TAN, ATAN, SIN, COS, ABS.
 
-If you can for the C++ version you can find it at: https://github.com/NTDLS/CMathParser
+If you came for the C++ version you can find it at: https://github.com/NTDLS/CMathParser
 
 Basic example usage:
 
