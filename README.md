@@ -26,10 +26,10 @@ Console.WriteLine($"{result:n2}");
 >In this example we simply call the static function Expression.Evaluate to compute the string expression, and we also supply an output parameter for which the parser will use to explain the operations.
 ```csharp
 
-var result = Expression.Evaluate("10 * ((1000 / 5 + (10 * 11))), out var explination");
+var result = Expression.Evaluate("10 * ((1000 / 5 + (10 * 11))), out var explanation");
 
 Console.WriteLine($"{result:n2}");
-Console.WriteLine(explination);
+Console.WriteLine(explanation);
 ```
 
 >**Advanced Example:**
