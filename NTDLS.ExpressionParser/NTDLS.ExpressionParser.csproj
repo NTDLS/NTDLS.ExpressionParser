@@ -5,9 +5,10 @@
     <Nullable>enable</Nullable>
     <ApplicationIcon>Logo.ico</ApplicationIcon>
     <TargetFrameworks>net6.0;net7.0;net8.0</TargetFrameworks>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Title>NTDLS.ExpressionParser</Title>
-    <GenerateDocumentationFile>False</GenerateDocumentationFile>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <IncludeSymbols>True</IncludeSymbols>
     <Copyright>Copyright © 2023 NetworkDLS</Copyright>
     <Description>
       A mathematics parsing engine for .net. It supports expression nesting, custom variables, custom functions all standard mathematical operations for integer, decimal (floating point), logic and bitwise.

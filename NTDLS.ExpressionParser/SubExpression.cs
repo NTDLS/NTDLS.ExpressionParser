@@ -2,7 +2,7 @@
 {
     internal class SubExpression
     {
-        private Expression _parentExpression;
+        private readonly Expression _parentExpression;
         public string Text { get; internal set; }
 
         public SubExpression(Expression parentExpression, string text)
@@ -44,7 +44,7 @@
 
                 List<double> parameters = new();
 
-                int i = functionStartIndex + foundFunction.Length; //Sikp the function name.
+                int i = functionStartIndex + foundFunction.Length; //Skip the function name.
 
                 for (; i < Text.Length; i++)
                 {
@@ -115,13 +115,12 @@
             while (true)
             {
                 int operatorIndex;
-                string operation;
 
                 //Process all function calls from right-to-left.
                 while (ProcessFunctionCall()) { }
 
                 //Pre-first-order:
-                while ((operatorIndex = GetFreestandingNotOperation(out operation)) > 0)
+                while ((operatorIndex = GetFreestandingNotOperation(out _)) > 0)
                 {
                     double rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength);
                     int notResult = (rightValue == 0) ? 1 : 0;
@@ -129,7 +128,7 @@
                 }
 
                 //First order operations:
-                operatorIndex = GetIndexOfOperation(Utility.FirstOrderOperations, out operation);
+                operatorIndex = GetIndexOfOperation(Utility.FirstOrderOperations, out string operation);
                 if (operatorIndex > 0)
                 {
                     GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition);
@@ -199,13 +198,6 @@
         /// <summary>
         /// Gets the numbers to the left and right of an operator.
         /// </summary>
-        /// <param name="expresion">The expression</param>
-        /// <param name="operation">The operator that we are parsing.</param>
-        /// <param name="operationBeginIndex">The index of the first character of the operator we are parsing for</param>
-        /// <param name="leftValue">Output: the parsed left-hand value</param>
-        /// <param name="rightValue">Output: the parsed right-hand value</param>
-        /// <param name="beginPosition">Output: the beginning index of the left-hand value</param>
-        /// <param name="endPosition">Output: the ending index of the right-hand value</param>
         private void GetLeftAndRightValues(string operation,
             int operationBeginIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition)
         {

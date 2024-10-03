@@ -2,8 +2,14 @@
 
 namespace NTDLS.ExpressionParser
 {
+    /// <summary>
+    /// Represents a mathematical expression.
+    /// </summary>
     public class Expression
     {
+        /// <summary>
+        /// Delegate for calling a custom function.
+        /// </summary>
         public delegate double CustomFunction(double[] parameters);
 
         private readonly Dictionary<string, double> _definedParameters = new();
@@ -19,17 +25,53 @@ namespace NTDLS.ExpressionParser
         internal double[] ComputedCache { get; private set; }
         internal int ConsumeNextComputedCacheIndex() => _nextComputedCacheIndex++;
 
+        /// <summary>
+        /// Represents a mathematical expression.
+        /// </summary>
         public Expression(string text)
         {
             Text = Sanitize(text.ToLower());
             ComputedCache = new double[_operationCount];
         }
 
-        public static double Evaluate(string expression, out string showWork) => new Expression(expression).Evaluate(out showWork);
-        public static double Evaluate(string expression) => new Expression(expression).Evaluate();
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        public static double Evaluate(string expression, out string showWork)
+            => new Expression(expression).Evaluate(out showWork);
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        public static double Evaluate(string expression)
+            => new Expression(expression).Evaluate();
+
+        /// <summary>
+        /// Adds a parameter to the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
+        /// <param name="value">Value of the variable.</param>
         public void AddParameter(string name, double value) => _definedParameters.Add(name, value);
+
+        /// <summary>
+        /// Removes all parameters which have been previously added to the expression.
+        /// </summary>
         public void ClearParameters() => _definedParameters.Clear();
-        public void AddFunction(string name, CustomFunction function) => CustomFunctions.Add(name.ToLower(), function);
+
+        /// <summary>
+        /// Adds a function to the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the function as found in the string mathematical expression.</param>
+        /// <param name="function">Delegate of the function.</param>
+        public void AddFunction(string name, CustomFunction function)
+            => CustomFunctions.Add(name.ToLower(), function);
+
+        /// <summary>
+        /// Removes all functions which have been previously added to the expression.
+        /// </summary>
         public void ClearFunction() => CustomFunctions.Clear();
 
         private string SwapInCacheValues(string text)
@@ -63,6 +105,9 @@ namespace NTDLS.ExpressionParser
             return copy;
         }
 
+        /// <summary>
+        /// Evaluates the expression, processing all variables and functions.
+        /// </summary>
         public double Evaluate()
         {
             ResetState();
@@ -87,6 +132,11 @@ namespace NTDLS.ExpressionParser
             return Utility.StringToDouble(WorkingText);
         }
 
+        /// <summary>
+        /// Evaluates the expression, processing all variables and functions.
+        /// </summary>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        /// <returns></returns>
         public double Evaluate(out string showWork)
         {
             ResetState();
@@ -145,7 +195,7 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        public double ExpToDouble(string exp)
+        internal double ExpToDouble(string exp)
         {
             if (exp[0] == '$')
             {
