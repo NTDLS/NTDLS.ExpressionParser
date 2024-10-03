@@ -34,17 +34,17 @@
         {
             string foundFunction;
 
-            int funcitonStartIndex = GetStartingIndexOfLastFunctionCall(out foundFunction);
-            int funcitonEndIndex;
+            int functionStartIndex = GetStartingIndexOfLastFunctionCall(out foundFunction);
+            int functionEndIndex;
 
-            if (funcitonStartIndex >= 0)
+            if (functionStartIndex >= 0)
             {
                 string buffer = string.Empty;
                 int scope = 0;
 
                 List<double> parameters = new();
 
-                int i = funcitonStartIndex + foundFunction.Length; //Sikp the function name.
+                int i = functionStartIndex + foundFunction.Length; //Sikp the function name.
 
                 for (; i < Text.Length; i++)
                 {
@@ -82,19 +82,19 @@
                     }
                 }
 
-                funcitonEndIndex = i;
+                functionEndIndex = i;
 
                 if (Utility.IsNativeFunction(foundFunction))
                 {
                     double functionResult = Utility.ComputeNativeFunction(foundFunction, parameters.ToArray());
-                    ReplaceRange(funcitonStartIndex, funcitonEndIndex, functionResult);
+                    ReplaceRange(functionStartIndex, functionEndIndex, functionResult);
                 }
                 else
                 {
                     if (_parentExpression.CustomFunctions.TryGetValue(foundFunction, out var customFunction))
                     {
                         double functionResult = customFunction.Invoke(parameters.ToArray());
-                        ReplaceRange(funcitonStartIndex, funcitonEndIndex, functionResult);
+                        ReplaceRange(functionStartIndex, functionEndIndex, functionResult);
                     }
                     else
                     {
@@ -110,7 +110,7 @@
 
         internal string Compute()
         {
-            TruncateParenthesises();
+            TruncateParenthesizes();
 
             while (true)
             {
@@ -134,7 +134,7 @@
                 {
                     GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition);
 
-                    double calculatedResult = Utility.ComputePrimative(leftValue, operation, rightValue);
+                    double calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                     ReplaceRange(beginPosition, endPosition, calculatedResult);
 
                     continue;
@@ -146,7 +146,7 @@
                 {
                     GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition);
 
-                    double calculatedResult = Utility.ComputePrimative(leftValue, operation, rightValue);
+                    double calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                     ReplaceRange(beginPosition, endPosition, calculatedResult);
 
                     continue;
@@ -158,7 +158,7 @@
                 {
                     GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition);
 
-                    double calculatedResult = Utility.ComputePrimative(leftValue, operation, rightValue);
+                    double calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                     ReplaceRange(beginPosition, endPosition, calculatedResult);
 
                     continue;
@@ -186,9 +186,9 @@
         }
 
         /// <summary>
-        /// Removes leading and trailing parenthesises, if they exist.
+        /// Removes leading and trailing parenthesizes, if they exist.
         /// </summary>
-        internal void TruncateParenthesises()
+        internal void TruncateParenthesizes()
         {
             while (Text.StartsWith('(') && Text.EndsWith(')'))
             {

@@ -162,7 +162,7 @@ namespace NTDLS.ExpressionParser
             throw new Exception($"Invalid operator: {operation}");
         }
 
-        internal static double ComputePrimative(double leftValue, string operation, double rightValue)
+        internal static double ComputePrivative(double leftValue, string operation, double rightValue)
         {
             if (IsIntegerExclusive(operation))
             {
@@ -314,7 +314,7 @@ namespace NTDLS.ExpressionParser
                     if (parameters.Length < 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
                     return parameters.Average(o => o);
                 default:
-                    throw new Exception($"Undefiend native function: {functionName}");
+                    throw new Exception($"Undefined native function: {functionName}");
             }
         }
 

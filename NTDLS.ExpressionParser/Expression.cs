@@ -74,7 +74,7 @@ namespace NTDLS.ExpressionParser
                 isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
                 //Compute the sub-expression.
                 var resultString = subExpression.Compute();
-                //Replace the sub-expresison in the whole expression with the result from the sub-expression computation.
+                //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
                 WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
 
@@ -109,7 +109,7 @@ namespace NTDLS.ExpressionParser
 
                 work.AppendLine($" = {SwapInCacheValues(resultString)}");
 
-                //Replace the sub-expresison in the whole expression with the result from the sub-expression computation.
+                //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
                 WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
 
@@ -129,7 +129,7 @@ namespace NTDLS.ExpressionParser
         internal void ResetState()
         {
             _nextComputedCacheIndex = 0;
-            WorkingText = Text; //Start with a pre-santitized/validated copy of the supplied expression text.
+            WorkingText = Text; //Start with a pre-sanitized/validated copy of the supplied expression text.
 
             //Swap out all of the user supplied parameters.
             foreach (var variable in DiscoveredVariables)
@@ -140,7 +140,7 @@ namespace NTDLS.ExpressionParser
                 }
                 else
                 {
-                    throw new Exception($"Undefiend variable: {variable}");
+                    throw new Exception($"Undefined variable: {variable}");
                 }
             }
         }
@@ -221,12 +221,12 @@ namespace NTDLS.ExpressionParser
 
                 if (scope != 0)
                 {
-                    throw new Exception($"Parenthesises mismatch when parsing subexpression.");
+                    throw new Exception($"Parenthesizes mismatch when parsing subexpression.");
                 }
 
                 if (subExpression.StartsWith('(') == false || subExpression.EndsWith(')') == false)
                 {
-                    throw new Exception($"Subsexpression should be enclosed in parenthesises.");
+                    throw new Exception($"Sub-expression should be enclosed in parenthesizes.");
                 }
 
                 outEndIndex = i;
@@ -319,7 +319,7 @@ namespace NTDLS.ExpressionParser
                 }
                 else if (Utility.IsValidVariableChar(expressionText[i]))
                 {
-                    //Parse the variable/function name and determine which it is. If its a function, then we want to swap out the opening and closing parenthesises with curly braces.
+                    //Parse the variable/function name and determine which it is. If its a function, then we want to swap out the opening and closing parenthesizes with curly braces.
 
                     string functionOrVariableName = string.Empty;
                     bool isFunction = false;
@@ -353,7 +353,7 @@ namespace NTDLS.ExpressionParser
                         DiscoveredFunctions.Add(functionOrVariableName);
 
                         string functionExpression = string.Empty;
-                        //If its a function, then lets find the opening and closing parenthesises and replace them with curly braces.
+                        //If its a function, then lets find the opening and closing parenthesizes and replace them with curly braces.
 
                         int functionScope = 0;
 
@@ -387,14 +387,14 @@ namespace NTDLS.ExpressionParser
 
                         if (functionScope != 0)
                         {
-                            throw new Exception($"Parenthesises mismatch when parsing function scope: {functionOrVariableName}");
+                            throw new Exception($"Parenthesizes mismatch when parsing function scope: {functionOrVariableName}");
                         }
 
                         var functionParameterString = Sanitize(functionExpression);
 
                         if (functionParameterString.StartsWith('(') == false || functionParameterString.EndsWith(')') == false)
                         {
-                            throw new Exception($"The function scope should be enclosed in parenthesises.");
+                            throw new Exception($"The function scope should be enclosed in parenthesizes.");
                         }
 
                         result += "{" + functionParameterString.Substring(1, functionParameterString.Length - 2) + "}";

@@ -26,8 +26,11 @@ namespace TestApp.CSharp
                 return sum;
             });
 
+            expression.Evaluate();
+
             Perform("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
 
+            Console.WriteLine("Press [enter] to close.");
             Console.ReadLine();
         }
 
@@ -37,12 +40,15 @@ namespace TestApp.CSharp
 
             var expression = new Expression(expr);
 
+            int iterations = 100000;
+
             DateTime startDate = DateTime.Now;
-            for (int i = 0; i < 100000; i++)
+            for (int i = 0; i < iterations; i++)
             {
                 expression.Evaluate();
             }
-            Console.WriteLine($"{(DateTime.Now - startDate).TotalMilliseconds:n2}");
+
+            Console.WriteLine($"{iterations:n0} iterations, {(((DateTime.Now - startDate).TotalMilliseconds) / iterations):n6}ms");
         }
     }
 }
