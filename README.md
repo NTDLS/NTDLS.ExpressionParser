@@ -6,11 +6,11 @@ ExpressionParser is a mathematics parsing engine for .net. It supports expressio
 
 It addition to the custom functions and variables, these are built in: ACOS, ASIN, ATAN, ATAN2, LDEXP, SINH, COSH, TANH, LOG, LOG10, EXP, MODPOW, SQRT, POW, FLOOR, CEIL, NOT, AVG, SUM, TAN, ATAN, SIN, COS, ABS.
 
-If you can for the C++ version you can find it at: https://github.com/NTDLS/CMathParser
+👀 If you came for the C++ version you can find it at: https://github.com/NTDLS/CMathParser
 
-Basic example usage:
+👀 Be sure to check out the NuGet package: https://www.nuget.org/packages/NTDLS.ExpressionParser/
 
-Be sure to check out the NuGet package: https://www.nuget.org/packages/NTDLS.ExpressionParser/
+## Basic usage:
 
 >**Simple Example:**
 >
@@ -26,10 +26,10 @@ Console.WriteLine($"{result:n2}");
 >In this example we simply call the static function Expression.Evaluate to compute the string expression, and we also supply an output parameter for which the parser will use to explain the operations.
 ```csharp
 
-var result = Expression.Evaluate("10 * ((1000 / 5 + (10 * 11))), out var explination");
+var result = Expression.Evaluate("10 * ((1000 / 5 + (10 * 11))), out var explanation");
 
 Console.WriteLine($"{result:n2}");
-Console.WriteLine(explination);
+Console.WriteLine(explanation);
 ```
 
 >**Advanced Example:**
