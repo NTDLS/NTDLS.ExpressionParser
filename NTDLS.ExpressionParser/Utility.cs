@@ -286,6 +286,9 @@ namespace NTDLS.ExpressionParser
                 case "sinh":
                     if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
                     return Math.Sinh(parameters[0]);
+                case "tanh":
+                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
+                    return Math.Tanh(parameters[0]);
                 case "cosh":
                     if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
                     return Math.Cosh(parameters[0]);
