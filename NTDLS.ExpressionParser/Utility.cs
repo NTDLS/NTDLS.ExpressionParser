@@ -192,84 +192,39 @@ namespace NTDLS.ExpressionParser
             return result;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static double ComputeNativeFunction(string functionName, double[] parameters)
         {
-            switch (functionName)
+            return functionName switch
             {
-                case "not":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return (parameters[0] == 0) ? 1 : 0;
-                case "acos":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Acos(parameters[0]);
-                case "asin":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Asin(parameters[0]);
-                case "atan2":
-                    if (parameters.Length != 2) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Atan2(parameters[0], parameters[1]);
-                case "pow":
-                    if (parameters.Length != 2) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Pow(parameters[0], (int)parameters[1]);
-                case "tan":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Tan(parameters[0]);
-                case "sin":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Sin(parameters[0]);
-                case "cos":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Cos(parameters[0]);
-                case "atan":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Atan(parameters[0]);
-                case "abs":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Abs(parameters[0]);
-                case "sqrt":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Sqrt(parameters[0]);
-                case "modpow":
-                    if (parameters.Length != 3) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return (double)BigInteger.ModPow((BigInteger)parameters[0], (BigInteger)parameters[1], (BigInteger)parameters[2]);
-                case "sinh":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Sinh(parameters[0]);
-                case "tanh":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Tanh(parameters[0]);
-                case "cosh":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Cosh(parameters[0]);
-                case "tahn":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Tanh(parameters[0]);
-                case "log":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Log(parameters[0]);
-                case "log10":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Log10(parameters[0]);
-                case "exp":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Exp(parameters[0]);
-                case "floor":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Floor(parameters[0]);
-                case "ceil":
-                    if (parameters.Length != 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return Math.Ceiling(parameters[0]);
-                case "sum":
-                    if (parameters.Length < 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return parameters.Sum(o => o);
-                case "avg":
-                    if (parameters.Length < 1) throw new Exception($"Invalid number of parameters passed to function: {functionName}");
-                    return parameters.Average(o => o);
-                default:
-                    throw new Exception($"Undefined native function: {functionName}");
-            }
+                "abs" => parameters.Length == 1 ? (Math.Abs(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "acos" => parameters.Length == 1 ? (Math.Acos(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "asin" => parameters.Length == 1 ? (Math.Asin(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "atan" => parameters.Length == 1 ? (Math.Atan(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "atan2" => parameters.Length == 2 ? (Math.Atan2(parameters[0], parameters[1])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "avg" => parameters.Length > 0 ? (parameters.Average()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "ceil" => parameters.Length == 1 ? (Math.Ceiling(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "cos" => parameters.Length == 1 ? (Math.Cos(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "cosh" => parameters.Length == 1 ? (Math.Cosh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "exp" => parameters.Length == 1 ? (Math.Exp(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "floor" => parameters.Length == 1 ? (Math.Floor(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "log" => parameters.Length == 1 ? (Math.Log(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "log10" => parameters.Length == 1 ? (Math.Log10(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "max" => parameters.Length > 0 ? (parameters.Max()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "min" => parameters.Length > 0 ? (parameters.Min()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "modpow" => parameters.Length == 3 ? ((double)BigInteger.ModPow((BigInteger)parameters[0], (BigInteger)parameters[1], (BigInteger)parameters[2])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "not" => parameters.Length == 1 ? ((parameters[0] == 0) ? 1 : 0) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "pow" => parameters.Length == 2 ? (Math.Pow(parameters[0], (int)parameters[1])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "sin" => parameters.Length == 1 ? (Math.Sin(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "sinh" => parameters.Length == 1 ? (Math.Sinh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "sqrt" => parameters.Length == 1 ? (Math.Sqrt(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "sum" => parameters.Length > 0 ? (parameters.Sum()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "tanh" => parameters.Length == 1 ? (Math.Tanh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "tan" => parameters.Length == 1 ? (Math.Tan(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                _ => throw new Exception($"Undefined native function: {functionName}"),
+            };
         }
-
+      
         public static double StringToDouble(ReadOnlySpan<char> span)
         {
             double result = 0.0;
