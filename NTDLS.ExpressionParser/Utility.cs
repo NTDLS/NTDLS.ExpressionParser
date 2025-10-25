@@ -75,11 +75,14 @@ namespace NTDLS.ExpressionParser
 	        "^",  //Exclusive OR
         };
 
+        internal static readonly char[] MathChars = ['*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~'];
+        internal static readonly string[] IntegerExclusiveOperations = ["&", "|", "^", "&=", "|=", "^=", "<<", ">>"];
+
         internal static bool IsNativeFunction(string value) => NativeFunnctions.Contains(value);
-        internal static bool IsIntegerExclusiveOperation(string value) => (new string[] { "&", "|", "^", "&=", "|=", "^=", "<<", ">>" }).Contains(value);
-        internal static bool IsMathChar(char value) => (new char[] { '*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~' }).Contains(value);
-        internal static bool IsValidChar(char value) => Char.IsDigit(value) || IsMathChar(value) || value == '.' || value == '(' || value == ')';
-        internal static bool IsValidVariableChar(char value) => Char.IsDigit(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
+        internal static bool IsIntegerExclusiveOperation(string value) => (IntegerExclusiveOperations).Contains(value);
+        internal static bool IsMathChar(char value) => (MathChars).Contains(value);
+        internal static bool IsValidChar(char value) => char.IsDigit(value) || IsMathChar(value) || value == '.' || value == '(' || value == ')';
+        internal static bool IsValidVariableChar(char value) => char.IsDigit(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
         internal static bool IsNumeric(string sText) => IsNumeric(sText, out bool _);
 
         internal static bool IsNumeric(ReadOnlySpan<char> sText, out bool isFloatingPoint)
