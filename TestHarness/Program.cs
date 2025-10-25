@@ -7,14 +7,17 @@ namespace TestHarness
     {
         static void Main()
         {
-            var f = Expression.Evaluate("-10+5");
+            var f = Expression.Evaluate("pow(sin(1), 2) + pow(cos(1), 2)", out string work);
+            //var f = Expression.Evaluate("2 + 3 * (4 - 1 + (2))");
+            //var f = Expression.Evaluate("2 + 3 * (1 + 2)");
             Console.WriteLine(f);
+            Console.WriteLine(work);
+
 
             /*
             //var f = Expression.Evaluate("10 + 3 * (4 - 1 + 2)");
             //var f = Expression.Evaluate("1 + (2 + 3)");
             //Console.WriteLine(f);
-
 
 
             var expr = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");

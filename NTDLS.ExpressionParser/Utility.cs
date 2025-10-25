@@ -1,6 +1,4 @@
-﻿using System;
-using System.Numerics;
-using System.Reflection;
+﻿using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace NTDLS.ExpressionParser
@@ -9,28 +7,42 @@ namespace NTDLS.ExpressionParser
     {
         internal static readonly string[] NativeFunnctions =
         {
-            "not",
+            "abs",
             "acos",
             "asin",
-            "atan2",
-            "pow",
-            "tan",
-            "sin",
-            "cos",
             "atan",
-            "abs",
-            "sqrt",
-            "modpow",
-            "sinh",
+            "atan2",
+            "avg",
+            "ceil",
+            "clamp",
+            "cos",
             "cosh",
-            "tanh",
-            "log",
-            "log10",
+            "count",
+            "deg",
+            "e",
             "exp",
             "floor",
-            "ceil",
+            "hypot",
+            "if",
+            "log",
+            "log10",
+            "logn",
+            "modpow",
+            "not",
+            "pi",
+            "pow",
+            "prod",
+            "rad",
+            "rand",
+            "round",
+            "sign",
+            "sin",
+            "sinh",
+            "sqrt",
             "sum",
-            "avg"
+            "tan",
+            "tanh",
+            "trunc"
         };
 
         internal static readonly char[] PreOrderOperations =
@@ -220,25 +232,48 @@ namespace NTDLS.ExpressionParser
                 "atan2" => parameters.Length == 2 ? (Math.Atan2(parameters[0], parameters[1])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "avg" => parameters.Length > 0 ? (parameters.Average()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "ceil" => parameters.Length == 1 ? (Math.Ceiling(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "clamp" => parameters.Length == 3 ? Math.Min(Math.Max(parameters[0], parameters[1]), parameters[2]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "cos" => parameters.Length == 1 ? (Math.Cos(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "cosh" => parameters.Length == 1 ? (Math.Cosh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "count" => parameters.Length,
+                "deg" => parameters.Length == 1 ? parameters[0] * 180.0 / Math.PI : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "e" => parameters.Length == 0 ? Math.E : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "exp" => parameters.Length == 1 ? (Math.Exp(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "floor" => parameters.Length == 1 ? (Math.Floor(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "hypot" => parameters.Length > 0 ? Math.Sqrt(parameters.Sum(x => x * x)) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "if" => parameters.Length == 3 ? parameters[0] != 0 ? parameters[1] : parameters[2] : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "log" => parameters.Length == 1 ? (Math.Log(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "log10" => parameters.Length == 1 ? (Math.Log10(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "logn" => parameters.Length == 2 ? Math.Log(parameters[0], parameters[1]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "max" => parameters.Length > 0 ? (parameters.Max()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "min" => parameters.Length > 0 ? (parameters.Min()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "modpow" => parameters.Length == 3 ? ((double)BigInteger.ModPow((BigInteger)parameters[0], (BigInteger)parameters[1], (BigInteger)parameters[2])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "not" => parameters.Length == 1 ? ((parameters[0] == 0) ? 1 : 0) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "pi" => parameters.Length == 0 ? Math.PI : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "pow" => parameters.Length == 2 ? (Math.Pow(parameters[0], (int)parameters[1])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "prod" => parameters.Length > 0 ? parameters.Aggregate(1.0, (a, b) => a * b) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "rad" => parameters.Length == 1 ? parameters[0] * Math.PI / 180.0 : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "rand" => parameters.Length == 0 ? Random.Shared.NextDouble() : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "round" => (parameters.Length == 1 || parameters.Length == 2) ? parameters.Length == 1 ? Math.Round(parameters[0]) : Math.Round(parameters[0], (int)parameters[1]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "sign" => parameters.Length == 1 ? Math.Sign(parameters[0]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "sin" => parameters.Length == 1 ? (Math.Sin(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "sinh" => parameters.Length == 1 ? (Math.Sinh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "sqrt" => parameters.Length == 1 ? (Math.Sqrt(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "sum" => parameters.Length > 0 ? (parameters.Sum()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "tanh" => parameters.Length == 1 ? (Math.Tanh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 "tan" => parameters.Length == 1 ? (Math.Tan(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "tanh" => parameters.Length == 1 ? (Math.Tanh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "trunc" => parameters.Length == 1 ? Math.Truncate(parameters[0]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 _ => throw new Exception($"Undefined native function: {functionName}"),
             };
+
+
+            return functionName switch
+            {
+
+                _ => throw new Exception($"Undefined native function: {functionName}")
+            };
+
+
         }
 
         public static int StringToInt(ReadOnlySpan<char> span)
@@ -247,52 +282,6 @@ namespace NTDLS.ExpressionParser
             for (int i = 0; i < span.Length; i++)
                 value = value * 10 + (span[i] - '0');
             return value;
-        }
-
-        public static double StringToDouble(ReadOnlySpan<char> span)
-        {
-            double result = 0.0;
-            int length = span.Length;
-            int i = 0;
-
-            if (length > 0 && span[0] == '-')
-            {
-                i++;
-            }
-
-            for (; i < length; i++)
-            {
-                if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
-                {
-                    result = result * 10.0 + (span[i] - '0');
-                }
-                else if (span[i] == '.')
-                {
-                    i++; //Skip the decimal point.
-
-                    double fraction = 0.0;
-                    double multiplier = 1.0;
-
-                    for (; i < length; i++)
-                    {
-                        if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
-                        {
-                            fraction = fraction * 10.0 + (span[i] - '0');
-                            multiplier *= 0.1;
-                        }
-                        else throw new FormatException("Invalid character in input string.");
-                    }
-
-                    result += fraction * multiplier;
-                }
-                else throw new FormatException("Invalid character in input string.");
-            }
-
-            if (length > 0 && span[0] == '-')
-            {
-                return -result;
-            }
-            return result;
         }
     }
 }

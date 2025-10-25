@@ -1,5 +1,4 @@
-﻿using System;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 
 namespace NTDLS.ExpressionParser
 {
@@ -53,7 +52,7 @@ namespace NTDLS.ExpressionParser
                     {
                         var subExpression = new SubExpression(_parentExpression, buffer);
                         subExpression.Compute();
-                        parameters.Add(Utility.StringToDouble(subExpression.Text));
+                        parameters.Add(_parentExpression.StringToDouble(subExpression.Text));
                         buffer = string.Empty;
                     }
                     else if (Text[i] == '{')
@@ -174,7 +173,7 @@ namespace NTDLS.ExpressionParser
             }
 
             var cacheKey = _parentExpression.ConsumeNextComputedCacheIndex(out int cacheIndex);
-            _parentExpression.ComputedCache[cacheIndex] = Utility.StringToDouble(Text);
+            _parentExpression.ComputedCache[cacheIndex] = _parentExpression.StringToDouble(Text);
             return cacheKey;
         }
 
@@ -225,23 +224,30 @@ namespace NTDLS.ExpressionParser
                 i--;
                 outParsedLength = (operationIndex - i) - 1;
                 var key = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
-                return _parentExpression.CacheValueNew(key);
+                return _parentExpression.CachedValue(key);
             }
             else
             {
-                if (span[i] == '-' || span[i] == '+')
-                {
-                    i--; //Skip the explicit positive or negative sign or cache indicator.
-                }
-
                 while (i > -1 && ((span[i] - '0' >= 0 && span[i] - '0' <= 9) || span[i] == '.'))
                 {
                     i--;
                 }
 
+                //Check for explicit positive or negative sign if the number is not at the start of the expression.
+                if (i == 0 && (span[i] == '-' || span[i] == '+'))
+                {
+                    i--; //Skip the explicit positive or negative sign or cache indicator.
+                }
+
+                //Check for explicit positive or negative sign when the preceding character is a math character.
+                if (i > 0 && Utility.IsMathChar(span[i - 1]) && (span[i] == '-' || span[i] == '+'))
+                {
+                    i--; //Skip the explicit positive or negative sign or cache indicator.
+                }
+
                 outParsedLength = (operationIndex - i) - 1;
                 var value = span.Slice(operationIndex - outParsedLength, outParsedLength);
-                return Utility.StringToDouble(value);
+                return _parentExpression.StringToDouble(value);
             }
         }
 
@@ -260,11 +266,11 @@ namespace NTDLS.ExpressionParser
                 }
                 i++;
                 outParsedLength = i;
-                return _parentExpression.CacheValueNew(span.Slice(1, i - 2));
+                return _parentExpression.CachedValue(span.Slice(1, i - 2));
             }
             else
             {
-                if (span[i] == '-' || span[i] == '+')
+                if (i < span.Length && (span[i] == '-' || span[i] == '+'))
                 {
                     i++; //Skip the explicit positive or negative sign or cache indicator.
                 }
@@ -276,7 +282,7 @@ namespace NTDLS.ExpressionParser
 
                 outParsedLength = i;
                 var value = span.Slice(0, i);
-                return Utility.StringToDouble(value);
+                return _parentExpression.StringToDouble(value);
             }
         }
 

@@ -1,7 +1,4 @@
-﻿using System;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Windows.Markup;
+﻿using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
@@ -20,19 +17,26 @@ namespace NTDLS.ExpressionParser
         private int _nextComputedCacheIndex = 0;
         private int _operationCount = 0;
 
+        /// <summary>
+        /// Gets or sets the number of significant digits used in calculations.
+        /// </summary>
+        public int Precision { get; set; } = 17;
+
+        internal string PrecisionFormat { get; set; } = "N17";
         internal string Text { get; private set; } = string.Empty;
         internal string WorkingText { get; set; } = string.Empty;
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
         internal Dictionary<string, CustomFunction> CustomFunctions { get; private set; } = new();
         internal double[] ComputedCache { get; private set; }
+
         internal string ConsumeNextComputedCacheIndex(out int cacheIndex)
         {
             cacheIndex = _nextComputedCacheIndex++;
             return $"${cacheIndex}$";
         }
 
-        internal double CacheValueNew(ReadOnlySpan<char> span)
+        internal double CachedValue(ReadOnlySpan<char> span)
         {
             switch (span.Length)
             {
@@ -46,25 +50,23 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        internal double CacheValue(ReadOnlySpan<char> span)
-        {
-            switch (span.Length - 2)
-            {
-                case 1:
-                    return ComputedCache[span[1] - '0'];
-                default:
-                    int index = 0;
-                    for (int i = 1; i < span.Length - 1; i++)
-                        index = index * 10 + (span[i] - '0');
-                    return ComputedCache[index];
-            }
-        }
-
         /// <summary>
         /// Represents a mathematical expression.
         /// </summary>
         public Expression(string text)
         {
+            PrecisionFormat = $"N{Precision}";
+            Text = Sanitize(text.ToLower());
+            ComputedCache = new double[_operationCount];
+        }
+
+        /// <summary>
+        /// Represents a mathematical expression.
+        /// </summary>
+        public Expression(string text, int precision)
+        {
+            Precision = precision;
+            PrecisionFormat = $"N{Precision}";
             Text = Sanitize(text.ToLower());
             ComputedCache = new double[_operationCount];
         }
@@ -76,6 +78,23 @@ namespace NTDLS.ExpressionParser
         /// <param name="showWork">Output parameter for the operational explanation.</param>
         public static double Evaluate(string expression, out string showWork)
             => new Expression(expression).Evaluate(out showWork);
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="precision">Number of significant digits used in calculations.</param>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        public static double Evaluate(string expression, int precision, out string showWork)
+            => new Expression(expression, precision).Evaluate(out showWork);
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="precision">Number of significant digits used in calculations.</param>
+        public static double Evaluate(string expression, int precision)
+            => new Expression(expression, precision).Evaluate();
 
         /// <summary>
         /// Evaluates a mathematical expression.
@@ -121,7 +140,7 @@ namespace NTDLS.ExpressionParser
                 if (begIndex >= 0 && endIndex > begIndex)
                 {
                     var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
-                    copy = copy.Replace($"${cacheKey}$", CacheValueNew(cacheKey).ToString());
+                    copy = copy.Replace($"${cacheKey}$", CachedValue(cacheKey).ToString(PrecisionFormat));
                 }
                 else
                 {
@@ -152,10 +171,10 @@ namespace NTDLS.ExpressionParser
 
             if (WorkingText[0] == '$')
             {
-                return CacheValueNew(WorkingText.AsSpan()[1..^1]);
+                return CachedValue(WorkingText.AsSpan()[1..^1]);
             }
 
-            return Utility.StringToDouble(WorkingText);
+            return StringToDouble(WorkingText);
         }
 
         /// <summary>
@@ -194,11 +213,11 @@ namespace NTDLS.ExpressionParser
             if (WorkingText[0] == '$')
             {
                 showWork = work.ToString();
-                return CacheValueNew(WorkingText.AsSpan()[1..^1]);
+                return CachedValue(WorkingText.AsSpan()[1..^1]);
             }
 
             showWork = work.ToString();
-            return Utility.StringToDouble(WorkingText);
+            return StringToDouble(WorkingText);
         }
 
         internal void ResetState()
@@ -211,7 +230,7 @@ namespace NTDLS.ExpressionParser
             {
                 if (_definedParameters.TryGetValue(variable, out var value))
                 {
-                    WorkingText = WorkingText.Replace(variable, value.ToString());
+                    WorkingText = WorkingText.Replace(variable, value.ToString(PrecisionFormat));
                 }
                 else
                 {
@@ -224,9 +243,9 @@ namespace NTDLS.ExpressionParser
         {
             if (exp[0] == '$')
             {
-                return CacheValueNew(exp.AsSpan()[1..^1]);
+                return CachedValue(exp.AsSpan()[1..^1]);
             }
-            return Utility.StringToDouble(exp);
+            return StringToDouble(exp);
         }
 
         internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
@@ -324,9 +343,35 @@ namespace NTDLS.ExpressionParser
             string result = string.Empty;
 
             int scope = 0;
+            int consecutiveMathChars = 0;
 
             for (int i = 0; i < expressionText.Length;)
             {
+                if (char.IsWhiteSpace(expressionText[i]))
+                {
+                    i++;
+                    continue;
+                }
+                else if (Utility.IsMathChar(expressionText[i]))
+                {
+                    _operationCount++;
+                    consecutiveMathChars++;
+
+                    // If multiple operator characters appear in a row, that's a malformed expression.
+                    if (consecutiveMathChars > 2)
+                    {
+                        throw new Exception($"Invalid consecutive operators near position {i}: '{expressionText[i]}'");
+                    }
+
+                    result += expressionText[i++];
+                    continue;
+                }
+                else
+                {
+                    // Reset the consecutive operator counter when we hit a number, variable, or parenthesis
+                    consecutiveMathChars = 0;
+                }
+
                 if (char.IsWhiteSpace(expressionText[i]))
                 {
                     i++;
@@ -497,6 +542,57 @@ namespace NTDLS.ExpressionParser
                 throw new Exception($"Scope mismatch while sanitizing input.");
             }
 
+            return result;
+        }
+
+        internal double StringToDouble(ReadOnlySpan<char> span)
+        {
+            if (span[0] == '$')
+            {
+                return CachedValue(span[1..^1]);
+            }
+
+            double result = 0.0;
+            int length = span.Length;
+            int i = 0;
+
+            if (length > 0 && (span[0] == '-' || span[0] == '+'))
+            {
+                i++;
+            }
+
+            for (; i < length; i++)
+            {
+                if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
+                {
+                    result = result * 10.0 + (span[i] - '0');
+                }
+                else if (span[i] == '.')
+                {
+                    i++; //Skip the decimal point.
+
+                    double fraction = 0.0;
+                    double multiplier = 1.0;
+
+                    for (; i < length; i++)
+                    {
+                        if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
+                        {
+                            fraction = fraction * 10.0 + (span[i] - '0');
+                            multiplier *= 0.1;
+                        }
+                        else throw new FormatException("Invalid character in input string.");
+                    }
+
+                    result += fraction * multiplier;
+                }
+                else throw new FormatException("Invalid character in input string.");
+            }
+
+            if (length > 0 && span[0] == '-')
+            {
+                return -result;
+            }
             return result;
         }
     }
