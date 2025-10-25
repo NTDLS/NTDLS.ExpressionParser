@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace NTDLS.ExpressionParser
 {
@@ -128,45 +129,33 @@ namespace NTDLS.ExpressionParser
             return true;
         }
 
-        internal static int ComputeIntegerExclusivePrimative(int leftValue, string operation, int rightValue)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int ComputeIntegerExclusivePrimitive(int leftValue, string operation, int rightValue)
         {
-            switch (operation)
+            return operation switch
             {
-                case "&&":
-                    return (leftValue != 0 && rightValue != 0) ? 1 : 0;
-                case "||":
-                    return (leftValue != 0 || rightValue != 0) ? 1 : 0;
-                case "&":
-                    return leftValue & rightValue;
-                case "|":
-                    return leftValue | rightValue;
-                case "!":
-                    return (leftValue != rightValue) ? 1 : 0;
-                case "=":
-                    return (leftValue == rightValue) ? 1 : 0;
-                case "~":
-                    return ~leftValue;
-                case "^":
-                    return leftValue ^ rightValue;
-                case "&=":
-                    return leftValue &= rightValue;
-                case "|=":
-                    return leftValue |= rightValue;
-                case "^=":
-                    return leftValue ^= rightValue;
-                case "<<":
-                    return leftValue << rightValue;
-                case ">>":
-                    return leftValue >> rightValue;
-            }
-            throw new Exception($"Invalid operator: {operation}");
+                "!" => (leftValue != rightValue) ? 1 : 0,
+                "&" => leftValue & rightValue,
+                "&&" => (leftValue != 0 && rightValue != 0) ? 1 : 0,
+                "&=" => leftValue &= rightValue,
+                "^" => leftValue ^ rightValue,
+                "^=" => leftValue ^= rightValue,
+                "|" => leftValue | rightValue,
+                "||" => (leftValue != 0 || rightValue != 0) ? 1 : 0,
+                "|=" => leftValue |= rightValue,
+                "~" => ~leftValue,
+                "<<" => leftValue << rightValue,
+                "=" => (leftValue == rightValue) ? 1 : 0,
+                ">>" => leftValue >> rightValue,
+                _ => throw new Exception($"Invalid operator: {operation}"),
+            };
         }
 
         internal static double ComputePrivative(double leftValue, string operation, double rightValue)
         {
             if (IsIntegerExclusive(operation))
             {
-                return ComputeIntegerExclusivePrimative((int)leftValue, operation, (int)rightValue);
+                return ComputeIntegerExclusivePrimitive((int)leftValue, operation, (int)rightValue);
             }
 
             double result;

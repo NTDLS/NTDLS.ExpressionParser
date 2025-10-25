@@ -8,3 +8,7 @@ TestHarness/obj/
 NTDLS.ExpressionParser/bin/
 
 NTDLS.ExpressionParser/obj/
+
+UnitTests/bin/
+
+UnitTests/obj/
