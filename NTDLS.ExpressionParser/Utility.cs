@@ -78,11 +78,22 @@ namespace NTDLS.ExpressionParser
         internal static readonly char[] MathChars = ['*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~'];
         internal static readonly string[] IntegerExclusiveOperations = ["&", "|", "^", "&=", "|=", "^=", "<<", ">>"];
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsNativeFunction(string value) => NativeFunnctions.Contains(value);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsIntegerExclusiveOperation(string value) => (IntegerExclusiveOperations).Contains(value);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsMathChar(char value) => (MathChars).Contains(value);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsValidChar(char value) => char.IsDigit(value) || IsMathChar(value) || value == '.' || value == '(' || value == ')';
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsValidVariableChar(char value) => char.IsDigit(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsNumeric(string sText) => IsNumeric(sText, out bool _);
 
         internal static bool IsNumeric(ReadOnlySpan<char> sText, out bool isFloatingPoint)
