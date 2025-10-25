@@ -1,14 +1,21 @@
 ﻿using NTDLS.ExpressionParser;
+using System.Diagnostics;
 
-namespace TestApp.CSharp
+namespace TestHarness
 {
     internal static class Program
     {
         static void Main()
         {
+
+            /*
+            var expr = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
+
+            Console.WriteLine(expr.Evaluate());
+            Console.WriteLine(expr.Evaluate());
+
             var result = Expression.Evaluate("10 * ((5 + 1000 + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10", out string work);
             Console.WriteLine(work);
-
 
             //("10 * ((5 + extra + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10": 5,086,050 when "extra" is 1000
             var expression = new Expression("10 * ((5 + extra + DoStuff(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10");
@@ -29,27 +36,49 @@ namespace TestApp.CSharp
 
             expression.Evaluate();
 
-            Perform("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
+            */
 
-            Console.WriteLine("Press [enter] to close.");
-            Console.ReadLine();
+            var timings = new List<double>();
+
+            for (int i = 0; i < 20; i++)
+            {
+                var totalTime = Perform("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10", 100000);
+                totalTime += Perform("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10", 100000);
+                totalTime += Perform("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10", 100000);
+
+                timings.Add(totalTime / 3);
+
+                Console.WriteLine($"{(totalTime / 3):n6}");
+            }
+
+            double avg = timings.Average();
+            double stdDev = Math.Sqrt(timings.Select(t => Math.Pow(t - avg, 2)).Average());
+            Console.WriteLine($"Best: {timings.Min():n2}, Worst: {timings.Max():n2}, Avg: {avg:n2}, StdDev: {stdDev:n2}");
+
+            //Console.WriteLine("Press [enter] to close.");
+            //Console.ReadLine();
         }
 
-        static void Perform(string expr)
+
+        static double Perform(string expr, int iterations)
         {
             Console.Write($"[{expr}] -> ");
 
             var expression = new Expression(expr);
 
-            int iterations = 100000;
+            expression.Evaluate(); // Warm-up
 
-            DateTime startDate = DateTime.Now;
+            var stopwatch = Stopwatch.StartNew();
             for (int i = 0; i < iterations; i++)
             {
-                expression.Evaluate();
+                expression.Evaluate(); //Typically takes ~3µs.
             }
+            stopwatch.Stop();
 
-            Console.WriteLine($"{iterations:n0} iterations, {(((DateTime.Now - startDate).TotalMilliseconds) / iterations):n6}ms");
+            double avgMs = stopwatch.Elapsed.TotalMilliseconds / iterations;
+            Console.WriteLine($"{iterations:n0} iterations, {avgMs:n6} ms per iteration");
+
+            return stopwatch.Elapsed.TotalMilliseconds;
         }
     }
 }
