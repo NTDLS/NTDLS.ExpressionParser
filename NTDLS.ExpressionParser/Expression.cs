@@ -429,6 +429,11 @@ namespace NTDLS.ExpressionParser
                                     break;
                                 }
                             }
+                            else if (expressionText[i] == ',')
+                            {
+                                functionExpression += expressionText[i];
+                                _operationCount++;
+                            }
                             else
                             {
                                 functionExpression += expressionText[i];
