@@ -322,10 +322,7 @@ namespace NTDLS.ExpressionParser
         private int GetIndexOfOperation(string[] validOperations, out string foundOperation)
         {
             ReadOnlySpan<char> span = Text.AsSpan();
-            int bestIndex = -1;
-            string bestOperation = string.Empty;
-
-            for (int i = 1; i < span.Length; i++) // skip leading char (unary + -)
+            for (int i = 0; i < span.Length; i++)
             {
                 // For each position, test all operations.
                 for (int j = 0; j < validOperations.Length; j++)
@@ -340,11 +337,9 @@ namespace NTDLS.ExpressionParser
                     // Compare directly (Span sequence equality)
                     if (span.Slice(i, opSpan.Length).SequenceEqual(opSpan))
                     {
-                        bestIndex = i;
-                        bestOperation = op;
                         // earliest operator found, stop scanning
-                        foundOperation = bestOperation;
-                        return bestIndex;
+                        foundOperation = op;
+                        return i;
                     }
                 }
             }

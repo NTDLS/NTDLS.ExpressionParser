@@ -7,6 +7,9 @@ namespace TestHarness
     {
         static void Main()
         {
+            var f = Expression.Evaluate("-10+5");
+            Console.WriteLine(f);
+
             /*
             //var f = Expression.Evaluate("10 + 3 * (4 - 1 + 2)");
             //var f = Expression.Evaluate("1 + (2 + 3)");
@@ -42,7 +45,7 @@ namespace TestHarness
             expression.Evaluate();
             */
 
-
+#if !DEBUG
             var timings = new List<double>();
 
             for (int i = 0; i < 20; i++)
@@ -62,7 +65,7 @@ namespace TestHarness
 
             //Console.WriteLine("Press [enter] to close.");
             //Console.ReadLine();
-
+#endif
         }
 
 
