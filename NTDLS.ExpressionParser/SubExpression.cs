@@ -120,7 +120,7 @@
                 while (ProcessFunctionCall()) { }
 
                 //Pre-first-order:
-                while ((operatorIndex = GetFreestandingNotOperation(out _)) > 0)
+                while ((operatorIndex = GetFreestandingNotOperation(out _)) != -1)
                 {
                     double rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength);
                     int notResult = (rightValue == 0) ? 1 : 0;
