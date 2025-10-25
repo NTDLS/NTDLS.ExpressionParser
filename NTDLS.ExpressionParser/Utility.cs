@@ -76,7 +76,7 @@ namespace NTDLS.ExpressionParser
         };
 
         internal static bool IsNativeFunction(string value) => NativeFunnctions.Contains(value);
-        internal static bool IsIntegerExclusive(string value) => (new string[] { "&", "|", "^", "&=", "|=", "^=", "<<", ">>" }).Contains(value);
+        internal static bool IsIntegerExclusiveOperation(string value) => (new string[] { "&", "|", "^", "&=", "|=", "^=", "<<", ">>" }).Contains(value);
         internal static bool IsMathChar(char value) => (new char[] { '*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~' }).Contains(value);
         internal static bool IsValidChar(char value) => Char.IsNumber(value) || IsMathChar(value) || value == '.' || value == '(' || value == ')';
         internal static bool IsValidVariableChar(char value) => Char.IsNumber(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
@@ -151,73 +151,33 @@ namespace NTDLS.ExpressionParser
             };
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static double ComputePrivative(double leftValue, string operation, double rightValue)
         {
-            if (IsIntegerExclusive(operation))
+            if (IsIntegerExclusiveOperation(operation))
             {
                 return ComputeIntegerExclusivePrimitive((int)leftValue, operation, (int)rightValue);
             }
 
-            double result;
-
-            switch (operation)
+            var result = operation switch
             {
-                case "*":
-                    result = (leftValue * rightValue);
-                    break;
-                case "/":
-                    if (rightValue == 0)
-                    {
-                        throw new Exception("Divide by zero.");
-                    }
-                    result = (leftValue / rightValue);
-                    break;
-                case "+":
-                    result = (leftValue + rightValue);
-                    break;
-                case "&&":
-                    result = (leftValue != 0 && rightValue != 0) ? 1 : 0;
-                    break;
-                case "||":
-                    result = (leftValue != 0 || rightValue != 0) ? 1 : 0;
-                    break;
-                case "-":
-                    result = (leftValue - rightValue);
-                    break;
-                case "=":
-                    result = (leftValue == rightValue) ? 1 : 0;
-                    break;
-                case ">":
-                    result = (leftValue > rightValue) ? 1 : 0;
-                    break;
-                case "<":
-                    result = (leftValue < rightValue) ? 1 : 0;
-                    break;
-                case ">=":
-                    result = (leftValue >= rightValue) ? 1 : 0;
-                    break;
-                case "<=":
-                    result = (leftValue <= rightValue) ? 1 : 0;
-                    break;
-                case "<>":
-                    result = (leftValue != rightValue) ? 1 : 0;
-                    break;
-                case "!":
-                    result = (leftValue != rightValue) ? 1 : 0;
-                    break;
-                case "!=":
-                    result = (leftValue != rightValue) ? 1 : 0;
-                    break;
-                case "%":
-                    if (rightValue == 0)
-                    {
-                        throw new Exception("Mod by zero.");
-                    }
-                    result = leftValue % rightValue;
-                    break;
-                default:
-                    throw new Exception("Invalid operator: {sOpr}");
-            }
+                "!" => (leftValue != rightValue) ? 1 : 0,
+                "!=" => (leftValue != rightValue) ? 1 : 0,
+                "-" => (leftValue - rightValue),
+                "%" => rightValue != 0 ? (leftValue % rightValue) : throw new Exception("Divide by zero (mod)."),
+                "&&" => (leftValue != 0 && rightValue != 0) ? 1 : 0,
+                "*" => (leftValue * rightValue),
+                "/" => rightValue != 0 ? (leftValue / rightValue) : throw new Exception("Divide by zero."),
+                "||" => (leftValue != 0 || rightValue != 0) ? 1 : 0,
+                "+" => (leftValue + rightValue),
+                "<" => (leftValue < rightValue) ? 1 : 0,
+                "<=" => (leftValue <= rightValue) ? 1 : 0,
+                "<>" => (leftValue != rightValue) ? 1 : 0,
+                "=" => (leftValue == rightValue) ? 1 : 0,
+                ">" => (leftValue > rightValue) ? 1 : 0,
+                ">=" => (leftValue >= rightValue) ? 1 : 0,
+                _ => throw new Exception($"Invalid operator: {operation}"),
+            };
 
             if (double.IsNaN(result))
             {
