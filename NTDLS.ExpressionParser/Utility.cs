@@ -1,4 +1,6 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Numerics;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace NTDLS.ExpressionParser
@@ -238,7 +240,15 @@ namespace NTDLS.ExpressionParser
                 _ => throw new Exception($"Undefined native function: {functionName}"),
             };
         }
-      
+
+        public static int StringToInt(ReadOnlySpan<char> span)
+        {
+            int value = 0;
+            for (int i = 0; i < span.Length; i++)
+                value = value * 10 + (span[i] - '0');
+            return value;
+        }
+
         public static double StringToDouble(ReadOnlySpan<char> span)
         {
             double result = 0.0;
@@ -281,21 +291,6 @@ namespace NTDLS.ExpressionParser
             if (length > 0 && span[0] == '-')
             {
                 return -result;
-            }
-            return result;
-        }
-
-        public static int StringToInt(ReadOnlySpan<char> span)
-        {
-            int result = 0;
-            int length = span.Length;
-
-            for (int i = 0; i < length; i++)
-            {
-                if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
-                {
-                    result = result * 10 + (span[i] - '0');
-                }
             }
             return result;
         }

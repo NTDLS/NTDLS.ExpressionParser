@@ -5,3 +5,7 @@ Best: 187.14, Worst: 320.42, Avg: 200.16, StdDev: 28.17
 Best: 181.70, Worst: 309.84, Avg: 196.72, StdDev: 26.51
 Best: 177.11, Worst: 318.81, Avg: 190.92, StdDev: 29.84
 Best: 173.46, Worst: 297.73, Avg: 181.80, StdDev: 26.67
+Best: 184.01, Worst: 339.60, Avg: 194.51, StdDev: 33.33
+Best: 193.96, Worst: 362.96, Avg: 212.74, StdDev: 35.00
+Best: 181.69, Worst: 341.54, Avg: 198.80, StdDev: 33.44
+Best: 115.47, Worst: 240.35, Avg: 126.89, StdDev: 26.34

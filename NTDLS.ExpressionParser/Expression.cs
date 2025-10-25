@@ -1,4 +1,7 @@
-﻿using System.Text;
+﻿using System;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Windows.Markup;
 
 namespace NTDLS.ExpressionParser
 {
@@ -23,7 +26,39 @@ namespace NTDLS.ExpressionParser
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
         internal Dictionary<string, CustomFunction> CustomFunctions { get; private set; } = new();
         internal double[] ComputedCache { get; private set; }
-        internal int ConsumeNextComputedCacheIndex() => _nextComputedCacheIndex++;
+        internal string ConsumeNextComputedCacheIndex(out int cacheIndex)
+        {
+            cacheIndex = _nextComputedCacheIndex++;
+            return $"${cacheIndex}$";
+        }
+
+        internal double CacheValueNew(ReadOnlySpan<char> span)
+        {
+            switch (span.Length)
+            {
+                case 1:
+                    return ComputedCache[span[0] - '0'];
+                default:
+                    int index = 0;
+                    for (int i = 0; i < span.Length; i++)
+                        index = index * 10 + (span[i] - '0');
+                    return ComputedCache[index];
+            }
+        }
+
+        internal double CacheValue(ReadOnlySpan<char> span)
+        {
+            switch (span.Length - 2)
+            {
+                case 1:
+                    return ComputedCache[span[1] - '0'];
+                default:
+                    int index = 0;
+                    for (int i = 1; i < span.Length - 1; i++)
+                        index = index * 10 + (span[i] - '0');
+                    return ComputedCache[index];
+            }
+        }
 
         /// <summary>
         /// Represents a mathematical expression.
@@ -76,31 +111,23 @@ namespace NTDLS.ExpressionParser
 
         private string SwapInCacheValues(string text)
         {
-            string copy = new string(text);
+            var copy = new string(text);
 
             while (true)
             {
-                int indexOfDollar = copy.IndexOf("$");
+                int begIndex = copy.IndexOf('$');
+                int endIndex = copy.IndexOf('$', begIndex + 1);
 
-                if (indexOfDollar >= 0)
+                if (begIndex >= 0 && endIndex > begIndex)
                 {
-                    string buffer = string.Empty;
-
-                    for (int i = indexOfDollar + 1; copy[i] != '$' && i < copy.Length; i++)
-                    {
-                        buffer += copy[i];
-                    }
-                    indexOfDollar++;// Skip the $
-
-                    int index = Utility.StringToInt(buffer);
-                    copy = copy.Replace($"${buffer}$", ComputedCache[index].ToString());
+                    var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
+                    copy = copy.Replace($"${cacheKey}$", CacheValueNew(cacheKey).ToString());
                 }
                 else
                 {
                     break;
                 }
             }
-
 
             return copy;
         }
@@ -125,8 +152,7 @@ namespace NTDLS.ExpressionParser
 
             if (WorkingText[0] == '$')
             {
-                int index = Utility.StringToInt(WorkingText.AsSpan(1, WorkingText.Length - 2));
-                return ComputedCache[index];
+                return CacheValueNew(WorkingText.AsSpan()[1..^1]);
             }
 
             return Utility.StringToDouble(WorkingText);
@@ -167,9 +193,8 @@ namespace NTDLS.ExpressionParser
 
             if (WorkingText[0] == '$')
             {
-                int index = Utility.StringToInt(WorkingText.AsSpan(1, WorkingText.Length - 2));
                 showWork = work.ToString();
-                return ComputedCache[index];
+                return CacheValueNew(WorkingText.AsSpan()[1..^1]);
             }
 
             showWork = work.ToString();
@@ -199,8 +224,7 @@ namespace NTDLS.ExpressionParser
         {
             if (exp[0] == '$')
             {
-                int index = Utility.StringToInt(exp.AsSpan(1, exp.Length - 2));
-                return ComputedCache[index];
+                return CacheValueNew(exp.AsSpan()[1..^1]);
             }
             return Utility.StringToDouble(exp);
         }

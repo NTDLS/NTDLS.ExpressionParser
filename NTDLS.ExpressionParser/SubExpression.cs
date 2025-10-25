@@ -1,4 +1,7 @@
-﻿namespace NTDLS.ExpressionParser
+﻿using System;
+using System.Runtime.CompilerServices;
+
+namespace NTDLS.ExpressionParser
 {
     internal class SubExpression
     {
@@ -32,9 +35,7 @@
 
         private bool ProcessFunctionCall()
         {
-            string foundFunction;
-
-            int functionStartIndex = GetStartingIndexOfLastFunctionCall(out foundFunction);
+            int functionStartIndex = GetStartingIndexOfLastFunctionCall(out string foundFunction);
             int functionEndIndex;
 
             if (functionStartIndex >= 0)
@@ -172,16 +173,16 @@
                 return Text;
             }
 
-            int index = _parentExpression.ConsumeNextComputedCacheIndex();
-            _parentExpression.ComputedCache[index] = Utility.StringToDouble(Text);
-            return "$" + index + "$";
+            var cacheKey = _parentExpression.ConsumeNextComputedCacheIndex(out int cacheIndex);
+            _parentExpression.ComputedCache[cacheIndex] = Utility.StringToDouble(Text);
+            return cacheKey;
         }
 
         internal void ReplaceRange(int startIndex, int endIndex, double value)
         {
-            int index = _parentExpression.ConsumeNextComputedCacheIndex();
-            _parentExpression.ComputedCache[index] = value;
-            Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, "$" + index + "$");
+            var cacheKey = _parentExpression.ConsumeNextComputedCacheIndex(out int cacheIndex);
+            _parentExpression.ComputedCache[cacheIndex] = value;
+            Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);
         }
 
         /// <summary>
@@ -210,74 +211,73 @@
 
         private double GetLeftValue(int operationIndex, out int outParsedLength)
         {
+            var span = Text.AsSpan(0, operationIndex);
+
             int i = operationIndex - 1;
 
-            for (; i > -1; i--)
+            if (span[i] == '$')
             {
-                if (((Text[i] - '0') >= 0 && (Text[i] - '0') <= 9) || Text[i] == '.' || Text[i] == '$')
+                i--; //Skip the cache indicator.
+                while (span[i] != '$')
                 {
+                    i--;
                 }
-                else if (Text[i] == '-' || Text[i] == '+')
-                {
-                    if (i == 0)
-                    {
-                        //The first character is a + or -, this is a valid explicit positive or negative.
-                    }
-                    else if (Utility.IsMathChar(Text[i - 1]))
-                    {
-                        //The next character to the left is a match, this is a valid explicit positive or negative.
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
+                i--;
+                outParsedLength = (operationIndex - i) - 1;
+                var key = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
+                return _parentExpression.CacheValueNew(key);
             }
-
-            outParsedLength = (operationIndex - 1) - i;
-            string value = Text.Substring(i + 1, outParsedLength);
-
-            if (value[0] == '$')
+            else
             {
-                int index = Utility.StringToInt(value.AsSpan(1, outParsedLength - 2));
-                return _parentExpression.ComputedCache[index];
-            }
+                if (span[i] == '-' || span[i] == '+')
+                {
+                    i--; //Skip the explicit positive or negative sign or cache indicator.
+                }
 
-            return Utility.StringToDouble(value);
+                while (i > -1 && ((span[i] - '0' >= 0 && span[i] - '0' <= 9) || span[i] == '.'))
+                {
+                    i--;
+                }
+
+                outParsedLength = (operationIndex - i) - 1;
+                var value = span.Slice(operationIndex - outParsedLength, outParsedLength);
+                return Utility.StringToDouble(value);
+            }
         }
 
         private double GetRightValue(int endOfOperationIndex, out int outParsedLength)
         {
-            int i = endOfOperationIndex;
+            var span = Text.AsSpan(endOfOperationIndex);
 
-            for (; i < Text.Length; i++)
+            int i = 0;
+
+            if (span[i] == '$')
             {
-                if (i == endOfOperationIndex && (Text[i] == '-' || Text[i] == '+') || Text[i] == '$')
+                i++; //Skip the cache indicator.
+                while (span[i] != '$')
                 {
+                    i++;
                 }
-                else if (((Text[i] - '0') >= 0 && (Text[i] - '0') <= 9) || (Text[i] == '.'))
-                {
-                }
-                else
-                {
-                    break;
-                }
+                i++;
+                outParsedLength = i;
+                return _parentExpression.CacheValueNew(span.Slice(1, i - 2));
             }
-
-            outParsedLength = i - endOfOperationIndex;
-
-            string value = Text.Substring(endOfOperationIndex, outParsedLength);
-            if (value[0] == '$')
+            else
             {
-                int index = Utility.StringToInt(value.AsSpan(1, outParsedLength - 2));
-                return _parentExpression.ComputedCache[index];
-            }
+                if (span[i] == '-' || span[i] == '+')
+                {
+                    i++; //Skip the explicit positive or negative sign or cache indicator.
+                }
 
-            return Utility.StringToDouble(value);
+                while (i < span.Length && ((span[i] - '0' >= 0 && span[i] - '0' <= 9) || span[i] == '.'))
+                {
+                    i++;
+                }
+
+                outParsedLength = i;
+                var value = span.Slice(0, i);
+                return Utility.StringToDouble(value);
+            }
         }
 
         private int GetFreestandingNotOperation(out string outFoundOperation) //Pre order.
@@ -296,44 +296,62 @@
             return -1;
         }
 
-        private int GetIndexOfOperation(char[] validOperations, out string outFoundOperation)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetIndexOfOperation(ReadOnlySpan<char> validOperations, out string foundOperation)
         {
-            for (int i = 1; i < Text.Length; i++)
+            ReadOnlySpan<char> span = Text.AsSpan();
+
+            for (int i = 1; i < span.Length; i++)
             {
-                if (validOperations.Contains(Text[i]))
+                char c = span[i];
+                for (int j = 0; j < validOperations.Length; j++)
                 {
-                    outFoundOperation = Text[i].ToString();
-                    return i;
+                    if (c == validOperations[j])
+                    {
+                        foundOperation = c.ToString();
+                        return i;
+                    }
                 }
             }
 
-            outFoundOperation = string.Empty; //No operation found.
+            foundOperation = string.Empty;
             return -1;
         }
 
-        private int GetIndexOfOperation(string[] validOperations, out string outFoundOperation)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetIndexOfOperation(string[] validOperations, out string foundOperation)
         {
-            int foundIndex = -1;
-            string foundOperation = string.Empty;
+            ReadOnlySpan<char> span = Text.AsSpan();
+            int bestIndex = -1;
+            string bestOperation = string.Empty;
 
-            for (int i = 0; i < validOperations.Length; i++)
+            for (int i = 1; i < span.Length; i++) // skip leading char (unary + -)
             {
-                int index = Text.IndexOf(validOperations[i], 1);
-                if (index >= 1 && (foundIndex < 0 || index < foundIndex))
+                // For each position, test all operations.
+                for (int j = 0; j < validOperations.Length; j++)
                 {
-                    foundIndex = index;
-                    foundOperation = validOperations[i];
+                    string op = validOperations[j];
+                    ReadOnlySpan<char> opSpan = op.AsSpan();
+
+                    // If not enough room left, skip
+                    if (i + opSpan.Length > span.Length)
+                        continue;
+
+                    // Compare directly (Span sequence equality)
+                    if (span.Slice(i, opSpan.Length).SequenceEqual(opSpan))
+                    {
+                        bestIndex = i;
+                        bestOperation = op;
+                        // earliest operator found, stop scanning
+                        foundOperation = bestOperation;
+                        return bestIndex;
+                    }
                 }
             }
 
-            if (foundIndex >= 0)
-            {
-                outFoundOperation = foundOperation; //No operation found.
-                return foundIndex;
-            }
-
-            outFoundOperation = string.Empty; //No operation found.
+            foundOperation = string.Empty; //No operation found.
             return -1;
         }
+
     }
 }
