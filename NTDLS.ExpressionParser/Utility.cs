@@ -78,8 +78,8 @@ namespace NTDLS.ExpressionParser
         internal static bool IsNativeFunction(string value) => NativeFunnctions.Contains(value);
         internal static bool IsIntegerExclusiveOperation(string value) => (new string[] { "&", "|", "^", "&=", "|=", "^=", "<<", ">>" }).Contains(value);
         internal static bool IsMathChar(char value) => (new char[] { '*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~' }).Contains(value);
-        internal static bool IsValidChar(char value) => Char.IsNumber(value) || IsMathChar(value) || value == '.' || value == '(' || value == ')';
-        internal static bool IsValidVariableChar(char value) => Char.IsNumber(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
+        internal static bool IsValidChar(char value) => Char.IsDigit(value) || IsMathChar(value) || value == '.' || value == '(' || value == ')';
+        internal static bool IsValidVariableChar(char value) => Char.IsDigit(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
         internal static bool IsNumeric(string sText) => IsNumeric(sText, out bool _);
 
         internal static bool IsNumeric(ReadOnlySpan<char> sText, out bool isFloatingPoint)
@@ -100,7 +100,7 @@ namespace NTDLS.ExpressionParser
 
             for (; iRPos < sText.Length; iRPos++)
             {
-                if (!char.IsNumber(sText[iRPos]))
+                if (!char.IsDigit(sText[iRPos]))
                 {
                     if (sText[iRPos] == '.')
                     {
@@ -271,7 +271,7 @@ namespace NTDLS.ExpressionParser
             return result;
         }
 
-        public static int StringToUint(ReadOnlySpan<char> span)
+        public static int StringToInt(ReadOnlySpan<char> span)
         {
             int result = 0;
             int length = span.Length;

@@ -92,7 +92,7 @@ namespace NTDLS.ExpressionParser
                     }
                     indexOfDollar++;// Skip the $
 
-                    int index = Utility.StringToUint(buffer);
+                    int index = Utility.StringToInt(buffer);
                     copy = copy.Replace($"${buffer}$", ComputedCache[index].ToString());
                 }
                 else
@@ -125,7 +125,7 @@ namespace NTDLS.ExpressionParser
 
             if (WorkingText[0] == '$')
             {
-                int index = Utility.StringToUint(WorkingText.AsSpan(1, WorkingText.Length - 2));
+                int index = Utility.StringToInt(WorkingText.AsSpan(1, WorkingText.Length - 2));
                 return ComputedCache[index];
             }
 
@@ -167,7 +167,7 @@ namespace NTDLS.ExpressionParser
 
             if (WorkingText[0] == '$')
             {
-                int index = Utility.StringToUint(WorkingText.AsSpan(1, WorkingText.Length - 2));
+                int index = Utility.StringToInt(WorkingText.AsSpan(1, WorkingText.Length - 2));
                 showWork = work.ToString();
                 return ComputedCache[index];
             }
@@ -199,7 +199,7 @@ namespace NTDLS.ExpressionParser
         {
             if (exp[0] == '$')
             {
-                int index = Utility.StringToUint(exp.AsSpan(1, exp.Length - 2));
+                int index = Utility.StringToInt(exp.AsSpan(1, exp.Length - 2));
                 return ComputedCache[index];
             }
             return Utility.StringToDouble(exp);
@@ -343,13 +343,13 @@ namespace NTDLS.ExpressionParser
                     result += expressionText[i++];
                     continue;
                 }
-                else if (char.IsNumber(expressionText[i]))
+                else if (char.IsDigit(expressionText[i]))
                 {
                     string buffer = string.Empty;
 
                     for (; i < expressionText.Length; i++)
                     {
-                        if (char.IsNumber(expressionText[i]) || expressionText[i] == '.')
+                        if (char.IsDigit(expressionText[i]) || expressionText[i] == '.')
                         {
                             buffer += expressionText[i];
                         }

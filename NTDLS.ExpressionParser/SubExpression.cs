@@ -243,7 +243,7 @@
 
             if (value[0] == '$')
             {
-                int index = Utility.StringToUint(value.AsSpan(1, outParsedLength - 2));
+                int index = Utility.StringToInt(value.AsSpan(1, outParsedLength - 2));
                 return _parentExpression.ComputedCache[index];
             }
 
@@ -273,7 +273,7 @@
             string value = Text.Substring(endOfOperationIndex, outParsedLength);
             if (value[0] == '$')
             {
-                int index = Utility.StringToUint(value.AsSpan(1, outParsedLength - 2));
+                int index = Utility.StringToInt(value.AsSpan(1, outParsedLength - 2));
                 return _parentExpression.ComputedCache[index];
             }
 
