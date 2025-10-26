@@ -3,23 +3,28 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace NTDLS.ExpressionParser
 {
     /// <summary>
     /// Represents a mathematical expression.
     /// </summary>
-    public class Expression
+    public partial class Expression
     {
+        [GeneratedRegex(@"\bnull\b", RegexOptions.IgnoreCase, "en-US")]
+        internal static partial Regex RegExNullCheck();
+
         /// <summary>
         /// Delegate for calling a custom function.
         /// </summary>
         public delegate double CustomFunction(double[] parameters);
 
         private volatile PreParsedCacheItem?[] _preParsedCache;
-        private readonly Dictionary<string, double> _definedParameters = new();
+        private readonly Dictionary<string, double?> _definedParameters = new();
         private readonly StringBuilder _replaceRangeBuilder = new();
         private int _nextPreComputedCacheKey = 0;
+        private int _originalNextPreComputedCacheKey = 0;
         private int _operationCount = 0;
 
         /// <summary>
@@ -34,7 +39,7 @@ namespace NTDLS.ExpressionParser
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
         internal Dictionary<string, CustomFunction> CustomFunctions { get; private set; } = new();
-        internal double[] PreComputedCache { get; private set; }
+        internal double?[] PreComputedCache { get; private set; }
 
         internal string ConsumeNextPreComputedCacheKey(out int cacheIndex)
         {
@@ -42,7 +47,7 @@ namespace NTDLS.ExpressionParser
             return $"${cacheIndex}$";
         }
 
-        internal double CachedValue(ReadOnlySpan<char> span)
+        internal double? CachedValue(ReadOnlySpan<char> span)
         {
             switch (span.Length)
             {
@@ -64,6 +69,10 @@ namespace NTDLS.ExpressionParser
             PrecisionFormat = $"G{Precision}";
             Text = Sanitize(text.ToLower());
 
+            _originalNextPreComputedCacheKey = _nextPreComputedCacheKey;
+
+            PreComputedCache = new double?[_operationCount];
+
             ExpressionHash = HashCombine(
                 XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(Text)),
                 (ulong)Precision
@@ -74,8 +83,6 @@ namespace NTDLS.ExpressionParser
                 entry.SlidingExpiration = TimeSpan.FromMinutes(5);
                 return new PreParsedCacheItem?[_operationCount];
             }) ?? throw new Exception("Failed to create persistent cache.");
-
-            PreComputedCache = new double[_operationCount];
         }
 
         /// <summary>
@@ -87,6 +94,10 @@ namespace NTDLS.ExpressionParser
             PrecisionFormat = $"G{Precision}";
             Text = Sanitize(text.ToLower());
 
+            _originalNextPreComputedCacheKey = _nextPreComputedCacheKey;
+
+            PreComputedCache = new double?[_operationCount];
+
             ExpressionHash = HashCombine(
                 XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(Text)),
                 (ulong)Precision
@@ -97,8 +108,6 @@ namespace NTDLS.ExpressionParser
                 entry.SlidingExpiration = TimeSpan.FromMinutes(5);
                 return new PreParsedCacheItem?[_operationCount];
             }) ?? throw new Exception("Failed to create persistent cache.");
-
-            PreComputedCache = new double[_operationCount];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -157,7 +166,7 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         /// <param name="expression">Mathematical expression in string form.</param>
         /// <param name="showWork">Output parameter for the operational explanation.</param>
-        public static double Evaluate(string expression, out string showWork)
+        public static double? Evaluate(string expression, out string showWork)
             => new Expression(expression).Evaluate(out showWork);
 
         /// <summary>
@@ -166,7 +175,7 @@ namespace NTDLS.ExpressionParser
         /// <param name="expression">Mathematical expression in string form.</param>
         /// <param name="precision">Number of significant digits used in calculations.</param>
         /// <param name="showWork">Output parameter for the operational explanation.</param>
-        public static double Evaluate(string expression, int precision, out string showWork)
+        public static double? Evaluate(string expression, int precision, out string showWork)
             => new Expression(expression, precision).Evaluate(out showWork);
 
         /// <summary>
@@ -174,36 +183,99 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         /// <param name="expression">Mathematical expression in string form.</param>
         /// <param name="precision">Number of significant digits used in calculations.</param>
-        public static double Evaluate(string expression, int precision)
+        public static double? Evaluate(string expression, int precision)
             => new Expression(expression, precision).Evaluate();
 
         /// <summary>
         /// Evaluates a mathematical expression.
         /// </summary>
         /// <param name="expression">Mathematical expression in string form.</param>
-        public static double Evaluate(string expression)
+        public static double? Evaluate(string expression)
             => new Expression(expression).Evaluate();
 
+        #region Evaluate Not Null.
+
         /// <summary>
-        /// Sets a parameter in the mathematical expression.
+        /// Evaluates a mathematical expression.
         /// </summary>
-        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
-        /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, double value) => _definedParameters[name] = value;
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
+        public static double EvaluateNotNull(string expression, out string showWork, out bool outResultWasNull)
+        {
+            var result = new Expression(expression).Evaluate(out showWork);
+            outResultWasNull = result == null;
+            return result ?? 0;
+        }
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="precision">Number of significant digits used in calculations.</param>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
+        public static double EvaluateNotNull(string expression, int precision, out string showWork, out bool outResultWasNull)
+        {
+            var result = new Expression(expression, precision).Evaluate(out showWork);
+            outResultWasNull = result == null;
+            return result ?? 0;
+        }
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="precision">Number of significant digits used in calculations.</param>
+        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
+        public static double EvaluateNotNull(string expression, int precision, out bool outResultWasNull)
+        {
+            var result = new Expression(expression, precision).Evaluate();
+            outResultWasNull = result == null;
+            return result ?? 0;
+        }
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
+        public static double EvaluateNotNull(string expression, out bool outResultWasNull)
+        {
+            var result = new Expression(expression).Evaluate();
+            outResultWasNull = result == null;
+            return result ?? 0;
+        }
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        public static double EvaluateNotNull(string expression)
+             => new Expression(expression).Evaluate() ?? 0;
+
+        #endregion
 
         /// <summary>
         /// Sets a parameter in the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, int value) => _definedParameters[name] = value;
+        public void SetParameter(string name, double? value) => _definedParameters[name] = value;
 
         /// <summary>
         /// Sets a parameter in the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, bool value) => _definedParameters[name] = value ? 1 : 0;
+        public void SetParameter(string name, int? value) => _definedParameters[name] = value;
+
+        /// <summary>
+        /// Sets a parameter in the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
+        /// <param name="value">Value of the variable.</param>
+        public void SetParameter(string name, bool? value) => _definedParameters[name] = value == null ? null : value == true ? 1 : 0;
 
         /// <summary>
         /// Removed a parameter from the mathematical expression.
@@ -248,7 +320,7 @@ namespace NTDLS.ExpressionParser
                 if (begIndex >= 0 && endIndex > begIndex)
                 {
                     var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
-                    copy = copy.Replace($"${cacheKey}$", CachedValue(cacheKey).ToString(PrecisionFormat));
+                    copy = copy.Replace($"${cacheKey}$", CachedValue(cacheKey)?.ToString(PrecisionFormat) ?? "null");
                 }
                 else
                 {
@@ -262,7 +334,7 @@ namespace NTDLS.ExpressionParser
         /// <summary>
         /// Evaluates the expression, processing all variables and functions.
         /// </summary>
-        public double Evaluate()
+        public double? Evaluate()
         {
             ResetState();
 
@@ -290,7 +362,7 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         /// <param name="showWork">Output parameter for the operational explanation.</param>
         /// <returns></returns>
-        public double Evaluate(out string showWork)
+        public double? Evaluate(out string showWork)
         {
             ResetState();
 
@@ -331,7 +403,7 @@ namespace NTDLS.ExpressionParser
         internal void ResetState()
         {
             NextPreParsedCacheKey = 0;
-            _nextPreComputedCacheKey = 0;
+            _nextPreComputedCacheKey = _originalNextPreComputedCacheKey; //To account for the NULL replacements during sanitization.
             WorkingText = Text; //Start with a pre-sanitized/validated copy of the supplied expression text.
 
             //Swap out all of the user supplied parameters.
@@ -339,7 +411,7 @@ namespace NTDLS.ExpressionParser
             {
                 if (_definedParameters.TryGetValue(variable, out var value))
                 {
-                    WorkingText = WorkingText.Replace(variable, value.ToString(PrecisionFormat));
+                    WorkingText = WorkingText.Replace(variable, value?.ToString(PrecisionFormat));
                 }
                 else
                 {
@@ -348,8 +420,12 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        internal double ExpToDouble(string exp)
+        internal double? ExpToDouble(string exp)
         {
+            if (exp.Length == 0)
+            {
+                return null;
+            }
             if (exp[0] == '$')
             {
                 return CachedValue(exp.AsSpan()[1..^1]);
@@ -453,6 +529,21 @@ namespace NTDLS.ExpressionParser
 
             int scope = 0;
             int consecutiveMathChars = 0;
+
+            var regex = RegExNullCheck();
+
+            //Find and replace all NULL literals with cache keys.
+            while (true)
+            {
+                var match = regex.Match(expressionText);
+                if (!match.Success)
+                    break;
+
+                var cacheKey = ConsumeNextPreComputedCacheKey(out _);
+                expressionText = ReplaceRange(expressionText, match.Index, (match.Index + match.Length) - 1, cacheKey);
+
+                _operationCount++;
+            }
 
             for (int i = 0; i < expressionText.Length;)
             {
@@ -630,7 +721,7 @@ namespace NTDLS.ExpressionParser
                             throw new Exception($"The function scope should be enclosed in parenthesizes.");
                         }
 
-                        result += "{" + functionParameterString.Substring(1, functionParameterString.Length - 2) + "}";
+                        result += $"{{{functionParameterString[1..^1]}}}";
                     }
                     else
                     {
@@ -639,6 +730,12 @@ namespace NTDLS.ExpressionParser
                         _operationCount++;
                         DiscoveredVariables.Add(functionOrVariableName);
                     }
+                }
+                else if (expressionText[i] == '$')
+                {
+                    _operationCount++;
+                    result += expressionText[i++];
+                    continue;
                 }
                 else
                 {
@@ -654,8 +751,12 @@ namespace NTDLS.ExpressionParser
             return result;
         }
 
-        internal double StringToDouble(ReadOnlySpan<char> span)
+        internal double? StringToDouble(ReadOnlySpan<char> span)
         {
+            if (span.Length == 0)
+            {
+                return null;
+            }
             if (span[0] == '$')
             {
                 return CachedValue(span[1..^1]);

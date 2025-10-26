@@ -5,10 +5,10 @@ namespace UnitTests
     public class ExpressionParserTests
     {
         private static double Eval(string expr)
-            => Expression.Evaluate(expr);
+            => Expression.EvaluateNotNull(expr);
 
         private static double Eval(string expr, out string showWork)
-            => Expression.Evaluate(expr, out showWork);
+            => Expression.EvaluateNotNull(expr, out showWork, out _);
 
         [Fact]
         public void Basic_Addition()

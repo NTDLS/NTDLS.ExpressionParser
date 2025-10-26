@@ -5,7 +5,7 @@ namespace UnitTests
     public class CustomFunctionTests
     {
         private static double Eval(string expr)
-            => Expression.Evaluate(expr);
+            => Expression.EvaluateNotNull(expr);
 
         [Fact]
         public void Custom_Function_CustomSum()

@@ -5,7 +5,7 @@ namespace UnitTests
     public class FunctionTests
     {
         private static double Eval(string expr)
-            => Expression.Evaluate(expr);
+            => Expression.EvaluateNotNull(expr);
 
         // === Built-in Function Specific Tests =======================================
 

@@ -43,9 +43,11 @@ namespace NTDLS.ExpressionParser
                 string buffer = string.Empty;
                 int scope = 0;
 
-                List<double> parameters = new();
+                var parameters = new List<double>();
 
                 int i = functionStartIndex + foundFunction.Length; //Skip the function name.
+
+                bool foundNull = false;
 
                 for (; i < Text.Length; i++)
                 {
@@ -53,7 +55,13 @@ namespace NTDLS.ExpressionParser
                     {
                         var subExpression = new SubExpression(_parentExpression, buffer);
                         subExpression.Compute();
-                        parameters.Add(_parentExpression.StringToDouble(subExpression.Text));
+
+                        var param = _parentExpression.StringToDouble(subExpression.Text);
+                        foundNull = foundNull || param == null;
+                        if (param != null)
+                        {
+                            parameters.Add(param ?? 0);
+                        }
                         buffer = string.Empty;
                     }
                     else if (Text[i] == '{')
@@ -73,8 +81,11 @@ namespace NTDLS.ExpressionParser
                         subExpression.Compute();
 
                         var param = _parentExpression.ExpToDouble(subExpression.Text);
-                        parameters.Add(param);
-
+                        if (param != null)
+                        {
+                            foundNull = foundNull || param == null;
+                            parameters.Add(param ?? 0);
+                        }
                         break;
                     }
                     else
@@ -85,7 +96,12 @@ namespace NTDLS.ExpressionParser
 
                 functionEndIndex = i;
 
-                if (Utility.IsNativeFunction(foundFunction))
+                if (foundNull)
+                {
+                    ReplaceRange(functionStartIndex, functionEndIndex, null);
+                    return true;
+                }
+                else if (Utility.IsNativeFunction(foundFunction))
                 {
                     double functionResult = Utility.ComputeNativeFunction(foundFunction, parameters.ToArray());
                     ReplaceRange(functionStartIndex, functionEndIndex, functionResult);
@@ -127,17 +143,17 @@ namespace NTDLS.ExpressionParser
 
                     if (_parentExpression.TryGetPreParsed(preParsedCacheKey, out PreParsedCacheItem cachedObj))
                     {
-                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.Value);
+                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ComputedValue);
                     }
                     else
                     {
-                        double rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength);
+                        var rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength);
                         int notResult = (rightValue == 0) ? 1 : 0;
                         ReplaceRange(operatorIndex, operatorIndex + outParsedLength, notResult);
 
                         var parsedNumber = new PreParsedCacheItem
                         {
-                            Value = notResult,
+                            ComputedValue = notResult,
                             BeginPosition = operatorIndex,
                             EndPosition = operatorIndex + outParsedLength
                         };
@@ -153,17 +169,20 @@ namespace NTDLS.ExpressionParser
 
                     if (_parentExpression.TryGetPreParsed(preParsedCacheKey, out PreParsedCacheItem cachedObj))
                     {
-                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.Value);
+                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ComputedValue);
                     }
                     else
                     {
-                        GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition);
-                        double calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
-                        ReplaceRange(beginPosition, endPosition, calculatedResult);
+                        double? calculatedResult = null;
+                        if (GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition))
+                        {
+                            calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
+                        }
 
+                        ReplaceRange(beginPosition, endPosition, calculatedResult);
                         var parsedNumber = new PreParsedCacheItem
                         {
-                            Value = calculatedResult,
+                            ComputedValue = calculatedResult,
                             BeginPosition = beginPosition,
                             EndPosition = endPosition
                         };
@@ -181,21 +200,25 @@ namespace NTDLS.ExpressionParser
 
                     if (_parentExpression.TryGetPreParsed(preParsedCacheKey, out PreParsedCacheItem cachedObj))
                     {
-                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.Value);
+                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ComputedValue);
                     }
                     else
                     {
-                        GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition);
+                        double? calculatedResult = null;
+                        if (GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition))
+                        {
+                            calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
+                        }
 
-                        double calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                         ReplaceRange(beginPosition, endPosition, calculatedResult);
                         var parsedNumber = new PreParsedCacheItem
                         {
-                            Value = calculatedResult,
+                            ComputedValue = calculatedResult,
                             BeginPosition = beginPosition,
                             EndPosition = endPosition
                         };
                         _parentExpression.SetPreParsed(preParsedCacheKey, parsedNumber);
+
                     }
                     continue;
                 }
@@ -208,17 +231,21 @@ namespace NTDLS.ExpressionParser
 
                     if (_parentExpression.TryGetPreParsed(preParsedCacheKey, out PreParsedCacheItem cachedObj))
                     {
-                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.Value);
+                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ComputedValue);
                     }
                     else
                     {
-                        GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition);
+                        double? calculatedResult = null;
 
-                        double calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
+                        if (GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition))
+                        {
+                            calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
+                        }
+
                         ReplaceRange(beginPosition, endPosition, calculatedResult);
                         var parsedNumber = new PreParsedCacheItem
                         {
-                            Value = calculatedResult,
+                            ComputedValue = calculatedResult,
                             BeginPosition = beginPosition,
                             EndPosition = endPosition
                         };
@@ -241,7 +268,7 @@ namespace NTDLS.ExpressionParser
             return cacheKey;
         }
 
-        internal void ReplaceRange(int startIndex, int endIndex, double value)
+        internal void ReplaceRange(int startIndex, int endIndex, double? value)
         {
             var cacheKey = _parentExpression.ConsumeNextPreComputedCacheKey(out int cacheIndex);
             _parentExpression.PreComputedCache[cacheIndex] = value;
@@ -261,18 +288,24 @@ namespace NTDLS.ExpressionParser
 
         /// <summary>
         /// Gets the numbers to the left and right of an operator.
+        /// Returns FALSE when NULL is found for either value.
         /// </summary>
-        private void GetLeftAndRightValues(string operation,
+        private bool GetLeftAndRightValues(string operation,
             int operationBeginIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition)
         {
-            leftValue = GetLeftValue(operationBeginIndex, out int leftParsedLength);
-            rightValue = GetRightValue(operationBeginIndex + operation.Length, out int rightParsedLength);
+            var left = GetLeftValue(operationBeginIndex, out int leftParsedLength);
+            var right = GetRightValue(operationBeginIndex + operation.Length, out int rightParsedLength);
+
+            leftValue = left ?? 0;
+            rightValue = right ?? 0;
 
             beginPosition = operationBeginIndex - leftParsedLength;
             endPosition = operationBeginIndex + rightParsedLength + (operation.Length - 1);
+
+            return left != null && right != null;
         }
 
-        private double GetLeftValue(int operationIndex, out int outParsedLength)
+        private double? GetLeftValue(int operationIndex, out int outParsedLength)
         {
             var span = Text.AsSpan(0, operationIndex);
 
@@ -315,7 +348,7 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        private double GetRightValue(int endOfOperationIndex, out int outParsedLength)
+        private double? GetRightValue(int endOfOperationIndex, out int outParsedLength)
         {
             var span = Text.AsSpan(endOfOperationIndex);
 

@@ -2,7 +2,7 @@
 {
     internal struct PreParsedCacheItem
     {
-        public double Value;
+        public double? ComputedValue;
         public int BeginPosition;
         public int EndPosition;
     }

@@ -5,6 +5,13 @@ namespace TestHarness
 {
     internal static class Program
     {
+        static void EvalPrint(string exp)
+        {
+            var expr = new Expression(exp);
+            var result = expr.Evaluate();
+            Console.WriteLine($"{expr}: {result?.ToString() ?? "{NULL}"}");
+        }
+
         static void Main()
         {
             /*
@@ -15,22 +22,13 @@ namespace TestHarness
             Console.WriteLine(work);
             */
 
-            /*
-            //var f = Expression.Evaluate("10 + 3 * (4 - 1 + 2)");
-            //var f = Expression.Evaluate("1 + (2 + 3)");
-            //Console.WriteLine(f);
+            EvalPrint("2 * sum(1,null,3)");
+            //EvalPrint("1 + (2 + 3)");
+            //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
 
-
-            var expr = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
-
-            Console.WriteLine(expr.Evaluate());
-            Console.WriteLine(expr.Evaluate());
-
-            var result = Expression.Evaluate("10 * ((5 + 1000 + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10", out string work);
-            Console.WriteLine(work);
+            //var result = Expression.Evaluate("10 * ((5 + 1000 + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10", out string work);
 
             //("10 * ((5 + extra + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10": 5,086,050 when "extra" is 1000
-            */
             //var expression = new Expression("10 * ((5 + extra + CustomSum(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10");
             /*
             var expression = new Expression("CustomSum(1,2) + SUM(3,4)");
@@ -52,6 +50,7 @@ namespace TestHarness
             Console.WriteLine(expression.Evaluate());
             */
 
+#if !DEBUG
             var timings = new List<double>();
 
             for (int i = 0; i < 20; i++)
@@ -68,6 +67,7 @@ namespace TestHarness
             double avg = timings.Average();
             double stdDev = Math.Sqrt(timings.Select(t => Math.Pow(t - avg, 2)).Average());
             Console.WriteLine($"Best: {timings.Min():n2}, Worst: {timings.Max():n2}, Avg: {avg:n2}, StdDev: {stdDev:n2}");
+#endif
         }
 
         static double Perform(string expr, int iterations)
