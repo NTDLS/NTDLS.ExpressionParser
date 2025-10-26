@@ -83,7 +83,7 @@ namespace TestHarness
             var stopwatch = Stopwatch.StartNew();
             for (int i = 0; i < iterations; i++)
             {
-                expression.Evaluate(); //Typically takes ~3µs.
+                expression.Evaluate(); //Typically takes ~1µs.
             }
             stopwatch.Stop();
 

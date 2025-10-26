@@ -9,7 +9,7 @@ namespace NTDLS.ExpressionParser
         internal static readonly MemoryCache PersistentCaches = new(new MemoryCacheOptions());
 
         internal static readonly string[] NativeFunctions =
-        {
+        [
             "abs",
             "acos",
             "asin",
@@ -46,29 +46,29 @@ namespace NTDLS.ExpressionParser
             "tan",
             "tanh",
             "trunc"
-        };
+        ];
 
         internal static readonly char[] PreOrderOperations =
-        {
+        [
             '!',  //Logical NOT
-        };
+        ];
 
         internal static readonly char[] FirstOrderOperations =
-        {
+        [
             '~',  //Bitwise NOT
 	        '*',  //Multiplication
 	        '/',  //Division
 	        '%'  //Modulation
-        };
+        ];
 
         internal static readonly char[] SecondOrderOperations =
-        {
+        [
             '+',  //Addition
 	        '-'  //Subtraction
-        };
+        ];
 
         internal static readonly string[] ThirdOrderOperations =
-        {
+        [
             "<>", //Logical Not Equal
 	        "|=", //Bitwise Or Equal
 	        "&=", //Bitwise And Equal
@@ -90,7 +90,7 @@ namespace NTDLS.ExpressionParser
 	        "|",  //Bitwise OR
 	        "&",  //Bitwise AND
 	        "^",  //Exclusive OR
-        };
+        ];
 
         internal static readonly char[] MathChars = ['*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~'];
         internal static readonly string[] IntegerExclusiveOperations = ["&", "|", "^", "&=", "|=", "^=", "<<", ">>"];
@@ -111,12 +111,10 @@ namespace NTDLS.ExpressionParser
         internal static bool IsValidVariableChar(char value) => char.IsDigit(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsNumeric(string sText) => IsNumeric(sText, out bool _);
-
-        internal static bool IsNumeric(ReadOnlySpan<char> sText, out bool isFloatingPoint)
+        internal static bool IsNumeric(ReadOnlySpan<char> sText)
         {
             int iRPos = 0;
-            isFloatingPoint = false;
+            bool isFloatingPoint = false;
 
             if (sText.Length == 0)
             {
