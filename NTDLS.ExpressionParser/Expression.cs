@@ -1,4 +1,8 @@
-﻿using System.Text;
+﻿using Microsoft.Extensions.Caching.Memory;
+using System.Diagnostics.CodeAnalysis;
+using System.IO.Hashing;
+using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
@@ -12,27 +16,29 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         public delegate double CustomFunction(double[] parameters);
 
+        private volatile PreParsedCacheItem?[] _preParsedCache;
         private readonly Dictionary<string, double> _definedParameters = new();
         private readonly StringBuilder _replaceRangeBuilder = new();
-        private int _nextComputedCacheIndex = 0;
+        private int _nextPreComputedCacheKey = 0;
         private int _operationCount = 0;
 
         /// <summary>
         /// Gets or sets the number of significant digits used in calculations.
         /// </summary>
         public int Precision { get; set; } = 17;
-
+        internal int NextPreParsedCacheKey { get; set; } = 0;
+        internal ulong ExpressionHash { get; private set; }
         internal string PrecisionFormat { get; set; } = "N17";
         internal string Text { get; private set; } = string.Empty;
         internal string WorkingText { get; set; } = string.Empty;
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
         internal Dictionary<string, CustomFunction> CustomFunctions { get; private set; } = new();
-        internal double[] ComputedCache { get; private set; }
+        internal double[] PreComputedCache { get; private set; }
 
-        internal string ConsumeNextComputedCacheIndex(out int cacheIndex)
+        internal string ConsumeNextPreComputedCacheKey(out int cacheIndex)
         {
-            cacheIndex = _nextComputedCacheIndex++;
+            cacheIndex = _nextPreComputedCacheKey++;
             return $"${cacheIndex}$";
         }
 
@@ -41,12 +47,12 @@ namespace NTDLS.ExpressionParser
             switch (span.Length)
             {
                 case 1:
-                    return ComputedCache[span[0] - '0'];
+                    return PreComputedCache[span[0] - '0'];
                 default:
                     int index = 0;
                     for (int i = 0; i < span.Length; i++)
                         index = index * 10 + (span[i] - '0');
-                    return ComputedCache[index];
+                    return PreComputedCache[index];
             }
         }
 
@@ -57,7 +63,19 @@ namespace NTDLS.ExpressionParser
         {
             PrecisionFormat = $"N{Precision}";
             Text = Sanitize(text.ToLower());
-            ComputedCache = new double[_operationCount];
+
+            ExpressionHash = HashCombine(
+                XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(Text)),
+                (ulong)Precision
+            );
+
+            _preParsedCache = Utility.PersistentCaches.GetOrCreate(ExpressionHash, entry =>
+            {
+                entry.SlidingExpiration = TimeSpan.FromMinutes(5);
+                return new PreParsedCacheItem?[_operationCount];
+            }) ?? throw new Exception("Failed to create persistent cache.");
+
+            PreComputedCache = new double[_operationCount];
         }
 
         /// <summary>
@@ -68,7 +86,70 @@ namespace NTDLS.ExpressionParser
             Precision = precision;
             PrecisionFormat = $"N{Precision}";
             Text = Sanitize(text.ToLower());
-            ComputedCache = new double[_operationCount];
+
+            ExpressionHash = HashCombine(
+                XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(Text)),
+                (ulong)Precision
+            );
+
+            _preParsedCache = Utility.PersistentCaches.GetOrCreate(ExpressionHash, entry =>
+            {
+                entry.SlidingExpiration = TimeSpan.FromMinutes(5);
+                return new PreParsedCacheItem?[_operationCount];
+            }) ?? throw new Exception("Failed to create persistent cache.");
+
+            PreComputedCache = new double[_operationCount];
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong HashCombine(ulong a, ulong b)
+        {
+            a ^= b + 0x9e3779b97f4a7c15UL + (a << 6) + (a >> 2); //high entropy spread.
+            return a;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool TryGetPreParsed(int slot, [NotNullWhen(true)] out PreParsedCacheItem value)
+        {
+            var local = _preParsedCache;
+            if ((uint)slot < (uint)local.Length)
+            {
+                var cached = local[slot];
+                if (cached != null)
+                {
+                    value = cached.Value;
+                    return true;
+                }
+            }
+            value = default;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void SetPreParsed(int slot, in PreParsedCacheItem value)
+        {
+            var local = _preParsedCache;
+            if ((uint)slot >= (uint)local.Length)
+            {
+                Resize(slot + 1);
+                local = _preParsedCache;
+            }
+            local[slot] = value;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void Resize(int requiredSize)
+        {
+            var current = _preParsedCache;
+            int newSize = current.Length;
+            while (newSize <= requiredSize)
+                newSize <<= 1; // grow exponentially
+
+            var newArray = new PreParsedCacheItem?[newSize];
+            Array.Copy(current, newArray, current.Length);
+
+            // Atomic publish, readers always see a valid array
+            Interlocked.Exchange(ref _preParsedCache, newArray);
         }
 
         /// <summary>
@@ -222,7 +303,8 @@ namespace NTDLS.ExpressionParser
 
         internal void ResetState()
         {
-            _nextComputedCacheIndex = 0;
+            NextPreParsedCacheKey = 0;
+            _nextPreComputedCacheKey = 0;
             WorkingText = Text; //Start with a pre-sanitized/validated copy of the supplied expression text.
 
             //Swap out all of the user supplied parameters.

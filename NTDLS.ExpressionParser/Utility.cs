@@ -1,11 +1,14 @@
-﻿using System.Numerics;
+﻿using Microsoft.Extensions.Caching.Memory;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace NTDLS.ExpressionParser
 {
     internal static class Utility
     {
-        internal static readonly string[] NativeFunnctions =
+        internal static readonly MemoryCache PersistentCaches = new(new MemoryCacheOptions());
+
+        internal static readonly string[] NativeFunctions =
         {
             "abs",
             "acos",
@@ -93,7 +96,7 @@ namespace NTDLS.ExpressionParser
         internal static readonly string[] IntegerExclusiveOperations = ["&", "|", "^", "&=", "|=", "^=", "<<", ">>"];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsNativeFunction(string value) => NativeFunnctions.Contains(value);
+        internal static bool IsNativeFunction(string value) => NativeFunctions.Contains(value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsIntegerExclusiveOperation(string value) => (IntegerExclusiveOperations).Contains(value);
@@ -112,7 +115,6 @@ namespace NTDLS.ExpressionParser
 
         internal static bool IsNumeric(ReadOnlySpan<char> sText, out bool isFloatingPoint)
         {
-
             int iRPos = 0;
             isFloatingPoint = false;
 
