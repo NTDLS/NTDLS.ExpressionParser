@@ -28,7 +28,7 @@ namespace NTDLS.ExpressionParser
         public int Precision { get; set; } = 17;
         internal int NextPreParsedCacheKey { get; set; } = 0;
         internal ulong ExpressionHash { get; private set; }
-        internal string PrecisionFormat { get; set; } = "N17";
+        internal string PrecisionFormat { get; set; } = "G17";
         internal string Text { get; private set; } = string.Empty;
         internal string WorkingText { get; set; } = string.Empty;
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
@@ -61,7 +61,7 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         public Expression(string text)
         {
-            PrecisionFormat = $"N{Precision}";
+            PrecisionFormat = $"G{Precision}";
             Text = Sanitize(text.ToLower());
 
             ExpressionHash = HashCombine(
@@ -84,7 +84,7 @@ namespace NTDLS.ExpressionParser
         public Expression(string text, int precision)
         {
             Precision = precision;
-            PrecisionFormat = $"N{Precision}";
+            PrecisionFormat = $"G{Precision}";
             Text = Sanitize(text.ToLower());
 
             ExpressionHash = HashCombine(
