@@ -185,11 +185,31 @@ namespace NTDLS.ExpressionParser
             => new Expression(expression).Evaluate();
 
         /// <summary>
-        /// Adds a parameter to the mathematical expression.
+        /// Sets a parameter in the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void AddParameter(string name, double value) => _definedParameters.Add(name, value);
+        public void SetParameter(string name, double value) => _definedParameters[name] = value;
+
+        /// <summary>
+        /// Sets a parameter in the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
+        /// <param name="value">Value of the variable.</param>
+        public void SetParameter(string name, int value) => _definedParameters[name] = value;
+
+        /// <summary>
+        /// Sets a parameter in the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
+        /// <param name="value">Value of the variable.</param>
+        public void SetParameter(string name, bool value) => _definedParameters[name] = value ? 1 : 0;
+
+        /// <summary>
+        /// Removed a parameter from the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
+        public void RemoveParameter(string name) => _definedParameters.Remove(name);
 
         /// <summary>
         /// Removes all parameters which have been previously added to the expression.
@@ -203,6 +223,13 @@ namespace NTDLS.ExpressionParser
         /// <param name="function">Delegate of the function.</param>
         public void AddFunction(string name, CustomFunction function)
             => CustomFunctions.Add(name.ToLower(), function);
+
+        /// <summary>
+        /// Removes a function from the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the function as found in the string mathematical expression.</param>
+        public void RemoveFunction(string name)
+            => CustomFunctions.Remove(name.ToLower());
 
         /// <summary>
         /// Removes all functions which have been previously added to the expression.
@@ -308,7 +335,7 @@ namespace NTDLS.ExpressionParser
             WorkingText = Text; //Start with a pre-sanitized/validated copy of the supplied expression text.
 
             //Swap out all of the user supplied parameters.
-            foreach (var variable in DiscoveredVariables)
+            foreach (var variable in DiscoveredVariables.OrderByDescending(o => o.Length))
             {
                 if (_definedParameters.TryGetValue(variable, out var value))
                 {

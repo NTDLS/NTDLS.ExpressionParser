@@ -131,9 +131,9 @@ namespace UnitTests
         public void Custom_Variable()
         {
             var exp = new Expression("a*b + c");
-            exp.AddParameter("a", 2);
-            exp.AddParameter("b", 3);
-            exp.AddParameter("c", 4);
+            exp.SetParameter("a", 2);
+            exp.SetParameter("b", 3);
+            exp.SetParameter("c", 4);
             Assert.Equal(10, exp.Evaluate());
         }
 

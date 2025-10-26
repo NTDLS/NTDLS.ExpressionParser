@@ -22,7 +22,8 @@ namespace NTDLS.ExpressionParser
             foreach (var function in _parentExpression.DiscoveredFunctions)
             {
                 int index = Text.LastIndexOf(function);
-                if (index >= 0 && index > foundIndex)
+                if (index >= 0 && index > foundIndex
+                    && (index == 0 || !Utility.IsValidVariableChar(Text[index - 1]))) //Must not be part of a larger function name.
                 {
                     foundIndex = index;
                     foundFunction = function;
@@ -122,9 +123,9 @@ namespace NTDLS.ExpressionParser
                 //Pre-first-order:
                 while ((operatorIndex = GetFreestandingNotOperation(out _)) != -1)
                 {
-                    var preparsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
+                    var preParsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
 
-                    if (_parentExpression.TryGetPreParsed(preparsedCacheKey, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsed(preParsedCacheKey, out PreParsedCacheItem cachedObj))
                     {
                         ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.Value);
                     }
@@ -140,7 +141,7 @@ namespace NTDLS.ExpressionParser
                             BeginPosition = operatorIndex,
                             EndPosition = operatorIndex + outParsedLength
                         };
-                        _parentExpression.SetPreParsed(preparsedCacheKey, parsedNumber);
+                        _parentExpression.SetPreParsed(preParsedCacheKey, parsedNumber);
                     }
                 }
 
@@ -148,9 +149,9 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.FirstOrderOperations, out string operation);
                 if (operatorIndex > 0)
                 {
-                    var preparsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
+                    var preParsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
 
-                    if (_parentExpression.TryGetPreParsed(preparsedCacheKey, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsed(preParsedCacheKey, out PreParsedCacheItem cachedObj))
                     {
                         ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.Value);
                     }
@@ -166,7 +167,7 @@ namespace NTDLS.ExpressionParser
                             BeginPosition = beginPosition,
                             EndPosition = endPosition
                         };
-                        _parentExpression.SetPreParsed(preparsedCacheKey, parsedNumber);
+                        _parentExpression.SetPreParsed(preParsedCacheKey, parsedNumber);
                     }
 
                     continue;
@@ -176,9 +177,9 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.SecondOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    var preparsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
+                    var preParsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
 
-                    if (_parentExpression.TryGetPreParsed(preparsedCacheKey, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsed(preParsedCacheKey, out PreParsedCacheItem cachedObj))
                     {
                         ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.Value);
                     }
@@ -194,7 +195,7 @@ namespace NTDLS.ExpressionParser
                             BeginPosition = beginPosition,
                             EndPosition = endPosition
                         };
-                        _parentExpression.SetPreParsed(preparsedCacheKey, parsedNumber);
+                        _parentExpression.SetPreParsed(preParsedCacheKey, parsedNumber);
                     }
                     continue;
                 }
@@ -203,9 +204,9 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.ThirdOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    var preparsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
+                    var preParsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
 
-                    if (_parentExpression.TryGetPreParsed(preparsedCacheKey, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsed(preParsedCacheKey, out PreParsedCacheItem cachedObj))
                     {
                         ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.Value);
                     }
@@ -221,7 +222,7 @@ namespace NTDLS.ExpressionParser
                             BeginPosition = beginPosition,
                             EndPosition = endPosition
                         };
-                        _parentExpression.SetPreParsed(preparsedCacheKey, parsedNumber);
+                        _parentExpression.SetPreParsed(preParsedCacheKey, parsedNumber);
                     }
                     continue;
                 }

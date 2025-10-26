@@ -30,11 +30,14 @@ namespace TestHarness
             Console.WriteLine(work);
 
             //("10 * ((5 + extra + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10": 5,086,050 when "extra" is 1000
-            var expression = new Expression("10 * ((5 + extra + DoStuff(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10");
+            */
+            //var expression = new Expression("10 * ((5 + extra + CustomSum(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10");
+            /*
+            var expression = new Expression("CustomSum(1,2) + SUM(3,4)");
 
-            expression.AddParameter("extra", 1000);
+            expression.SetParameter("extra", 1000);
 
-            expression.AddFunction("DoStuff", (double[] parameters) =>
+            expression.AddFunction("CustomSum", (double[] parameters) =>
             {
                 double sum = 0;
 
@@ -46,9 +49,8 @@ namespace TestHarness
                 return sum;
             });
 
-            expression.Evaluate();
+            Console.WriteLine(expression.Evaluate());
             */
-
 
             var timings = new List<double>();
 
@@ -66,10 +68,6 @@ namespace TestHarness
             double avg = timings.Average();
             double stdDev = Math.Sqrt(timings.Select(t => Math.Pow(t - avg, 2)).Average());
             Console.WriteLine($"Best: {timings.Min():n2}, Worst: {timings.Max():n2}, Avg: {avg:n2}, StdDev: {stdDev:n2}");
-
-            //Console.WriteLine("Press [enter] to close.");
-            //Console.ReadLine();
-
         }
 
         static double Perform(string expr, int iterations)
