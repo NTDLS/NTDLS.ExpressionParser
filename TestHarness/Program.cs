@@ -9,7 +9,7 @@ namespace TestHarness
         {
             var expr = new Expression(exp);
             var result = expr.Evaluate();
-            Console.WriteLine($"{expr}: {result?.ToString() ?? "{NULL}"}");
+            Console.WriteLine($"{exp}: {result?.ToString() ?? "{NULL}"}");
         }
 
         static void Main()
@@ -31,7 +31,7 @@ namespace TestHarness
             expression.SetParameter("extra", 2000);
             Console.WriteLine(expression.Evaluate());
 
-            //EvalPrint("2 * sum(1,null,3)");
+            EvalPrint("2 * sum(1,null,3)");
             //EvalPrint("1 + (2 + 3)");
             //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
 

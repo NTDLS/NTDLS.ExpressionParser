@@ -54,10 +54,7 @@ namespace NTDLS.ExpressionParser
 
             if (Options.UseParserCache)
             {
-                _expressionHash = HashCombine(
-                    XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(_text)),
-                    (ulong)Options.Precision
-                );
+                _expressionHash = HashCombine(XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(_text)), Options.Precision);
 
                 _preParsedCache = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
                 {
@@ -80,8 +77,6 @@ namespace NTDLS.ExpressionParser
 
             var regex = RegExNullCheck();
 
-            var expressionSpan = expressionText.AsSpan();
-
             //Find and replace all NULL literals with cache keys.
             //These cache entries contain NULL by default, so no need to set them.
             while (true)
@@ -95,6 +90,8 @@ namespace NTDLS.ExpressionParser
 
                 _operationCount++;
             }
+
+            var expressionSpan = expressionText.AsSpan();
 
             for (int i = 0; i < expressionSpan.Length;)
             {
@@ -611,6 +608,16 @@ namespace NTDLS.ExpressionParser
         {
             _nextPreParsedCacheSlot = 0;
             WorkingText = _text; //Start with a pre-sanitized/validated copy of the supplied expression text.
+
+            for(int i = 0; i< _nextPreComputedCacheSlot; i++)
+            {
+                _preComputedCache[i] = new PreComputedCacheItem()
+                {
+                    ComputedValue = null,
+                    IsVariable = false,
+                    IsNullValue = true
+                };
+            }
 
             _nextPreComputedCacheSlot = _originalNextPreComputedCacheSlot; //To account for the NULL replacements during sanitization.
 

@@ -19,5 +19,10 @@
         /// Gets or sets the number of significant digits used in calculations.
         /// </summary>
         public ushort Precision { get; set; } = 17;
+
+        /// <summary>
+        /// Gets or sets the default value to use when a NULL is encountered in expressions.
+        /// </summary>
+        public double? DefaultNullValue { get; set; } = null;
     }
 }

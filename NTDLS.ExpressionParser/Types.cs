@@ -11,5 +11,6 @@
     {
         public double? ComputedValue;
         public bool IsVariable;
+        public bool IsNullValue;
     }
 }
