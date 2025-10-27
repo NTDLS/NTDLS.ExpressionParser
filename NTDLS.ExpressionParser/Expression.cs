@@ -18,67 +18,46 @@ namespace NTDLS.ExpressionParser
         /// <summary>
         /// Delegate for calling a custom function.
         /// </summary>
-        public delegate double CustomFunction(double[] parameters);
-
-        private volatile PreParsedCacheItem?[] _preParsedCache;
-        private readonly Dictionary<string, double?> _definedParameters = new();
-        private readonly StringBuilder _replaceRangeBuilder = new();
-        private int _nextPreComputedCacheKey = 0;
-        private int _originalNextPreComputedCacheKey = 0;
-        private int _operationCount = 0;
-
+        public delegate double ExpressionFunction(double[] parameters);
         /// <summary>
         /// Gets or sets the number of significant digits used in calculations.
         /// </summary>
         public int Precision { get; set; } = 17;
-        internal int NextPreParsedCacheKey { get; set; } = 0;
-        internal ulong ExpressionHash { get; private set; }
-        internal string PrecisionFormat { get; set; } = "G17";
-        internal string Text { get; private set; } = string.Empty;
+        private int _nextPreParsedCacheSlot = 0;
+        private ulong _expressionHash;
+        private PreComputedCacheItem[] _preComputedCache;
+        private readonly string _text = string.Empty;
+        private string _precisionFormat = "G17";
+        private volatile PreParsedCacheItem?[] _preParsedCache;
+        private readonly Dictionary<string, double?> _definedParameters = new();
+        private readonly StringBuilder _replaceRangeBuilder = new();
+        private int _nextPreComputedCacheSlot = 0;
+        private readonly int _originalNextPreComputedCacheSlot = 0;
+        private int _operationCount = 0;
+
         internal string WorkingText { get; set; } = string.Empty;
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
-        internal Dictionary<string, CustomFunction> CustomFunctions { get; private set; } = new();
-        internal PreComputedCacheItem[] PreComputedCache { get; private set; }
+        internal Dictionary<string, ExpressionFunction> ExpressionFunctions { get; private set; } = new();
 
-        internal string ConsumeNextPreComputedCacheKey(out int cacheIndex)
-        {
-            cacheIndex = _nextPreComputedCacheKey++;
-            return $"${cacheIndex}$";
-        }
-
-        internal PreComputedCacheItem GetPreComputedCacheItem(ReadOnlySpan<char> span)
-        {
-            switch (span.Length)
-            {
-                case 1:
-                    return PreComputedCache[span[0] - '0'];
-                default:
-                    int index = 0;
-                    for (int i = 0; i < span.Length; i++)
-                        index = index * 10 + (span[i] - '0');
-                    return PreComputedCache[index];
-            }
-        }
+        #region ~/ctor and Sanitize.
 
         /// <summary>
         /// Represents a mathematical expression.
         /// </summary>
         public Expression(string text)
         {
-            PrecisionFormat = $"G{Precision}";
-            Text = Sanitize(text.ToLower());
+            _precisionFormat = $"G{Precision}";
+            _text = Sanitize(text.ToLower());
+            _originalNextPreComputedCacheSlot = _nextPreComputedCacheSlot;
+            _preComputedCache = new PreComputedCacheItem[_operationCount];
 
-            _originalNextPreComputedCacheKey = _nextPreComputedCacheKey;
-
-            PreComputedCache = new PreComputedCacheItem[_operationCount];
-
-            ExpressionHash = HashCombine(
-                XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(Text)),
+            _expressionHash = HashCombine(
+                XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(_text)),
                 (ulong)Precision
             );
 
-            _preParsedCache = Utility.PersistentCaches.GetOrCreate(ExpressionHash, entry =>
+            _preParsedCache = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
             {
                 entry.SlidingExpiration = TimeSpan.FromMinutes(5);
                 return new PreParsedCacheItem?[_operationCount];
@@ -91,428 +70,21 @@ namespace NTDLS.ExpressionParser
         public Expression(string text, int precision)
         {
             Precision = precision;
-            PrecisionFormat = $"G{Precision}";
-            Text = Sanitize(text.ToLower());
+            _precisionFormat = $"G{Precision}";
+            _text = Sanitize(text.ToLower());
+            _originalNextPreComputedCacheSlot = _nextPreComputedCacheSlot;
+            _preComputedCache = new PreComputedCacheItem[_operationCount];
 
-            _originalNextPreComputedCacheKey = _nextPreComputedCacheKey;
-
-            PreComputedCache = new PreComputedCacheItem[_operationCount];
-
-            ExpressionHash = HashCombine(
-                XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(Text)),
+            _expressionHash = HashCombine(
+                XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(_text)),
                 (ulong)Precision
             );
 
-            _preParsedCache = Utility.PersistentCaches.GetOrCreate(ExpressionHash, entry =>
+            _preParsedCache = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
             {
                 entry.SlidingExpiration = TimeSpan.FromMinutes(5);
                 return new PreParsedCacheItem?[_operationCount];
             }) ?? throw new Exception("Failed to create persistent cache.");
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong HashCombine(ulong a, ulong b)
-        {
-            a ^= b + 0x9e3779b97f4a7c15UL + (a << 6) + (a >> 2); //high entropy spread.
-            return a;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool TryGetPreParsedCache(int slot, [NotNullWhen(true)] out PreParsedCacheItem value)
-        {
-            if (slot < _preParsedCache.Length)
-            {
-                var cached = _preParsedCache[slot];
-                if (cached != null)
-                {
-                    value = cached.Value;
-                    return true;
-                }
-            }
-            value = default;
-            return false;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void SetPreParsedCache(int slot, in PreParsedCacheItem value)
-        {
-            if (slot >= _preParsedCache.Length)
-            {
-                int newSize = _preParsedCache.Length * 2;
-                var newArray = new PreParsedCacheItem?[newSize];
-                Array.Copy(_preParsedCache, newArray, _preParsedCache.Length);
-                _preParsedCache = newArray;
-            }
-            _preParsedCache[slot] = value;
-        }
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="showWork">Output parameter for the operational explanation.</param>
-        public static double? Evaluate(string expression, out string showWork)
-            => new Expression(expression).Evaluate(out showWork);
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="precision">Number of significant digits used in calculations.</param>
-        /// <param name="showWork">Output parameter for the operational explanation.</param>
-        public static double? Evaluate(string expression, int precision, out string showWork)
-            => new Expression(expression, precision).Evaluate(out showWork);
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="precision">Number of significant digits used in calculations.</param>
-        public static double? Evaluate(string expression, int precision)
-            => new Expression(expression, precision).Evaluate();
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        public static double? Evaluate(string expression)
-            => new Expression(expression).Evaluate();
-
-        #region Evaluate Not Null.
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="showWork">Output parameter for the operational explanation.</param>
-        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
-        public static double EvaluateNotNull(string expression, out string showWork, out bool outResultWasNull)
-        {
-            var result = new Expression(expression).Evaluate(out showWork);
-            outResultWasNull = result == null;
-            return result ?? 0;
-        }
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="precision">Number of significant digits used in calculations.</param>
-        /// <param name="showWork">Output parameter for the operational explanation.</param>
-        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
-        public static double EvaluateNotNull(string expression, int precision, out string showWork, out bool outResultWasNull)
-        {
-            var result = new Expression(expression, precision).Evaluate(out showWork);
-            outResultWasNull = result == null;
-            return result ?? 0;
-        }
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="precision">Number of significant digits used in calculations.</param>
-        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
-        public static double EvaluateNotNull(string expression, int precision, out bool outResultWasNull)
-        {
-            var result = new Expression(expression, precision).Evaluate();
-            outResultWasNull = result == null;
-            return result ?? 0;
-        }
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
-        public static double EvaluateNotNull(string expression, out bool outResultWasNull)
-        {
-            var result = new Expression(expression).Evaluate();
-            outResultWasNull = result == null;
-            return result ?? 0;
-        }
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        public static double EvaluateNotNull(string expression)
-             => new Expression(expression).Evaluate() ?? 0;
-
-        #endregion
-
-        /// <summary>
-        /// Sets a parameter in the mathematical expression.
-        /// </summary>
-        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
-        /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, double? value) => _definedParameters[name] = value;
-
-        /// <summary>
-        /// Sets a parameter in the mathematical expression.
-        /// </summary>
-        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
-        /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, int? value) => _definedParameters[name] = value;
-
-        /// <summary>
-        /// Sets a parameter in the mathematical expression.
-        /// </summary>
-        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
-        /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, bool? value) => _definedParameters[name] = value == null ? null : value == true ? 1 : 0;
-
-        /// <summary>
-        /// Removed a parameter from the mathematical expression.
-        /// </summary>
-        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
-        public void RemoveParameter(string name) => _definedParameters.Remove(name);
-
-        /// <summary>
-        /// Removes all parameters which have been previously added to the expression.
-        /// </summary>
-        public void ClearParameters() => _definedParameters.Clear();
-
-        /// <summary>
-        /// Adds a function to the mathematical expression.
-        /// </summary>
-        /// <param name="name">Name of the function as found in the string mathematical expression.</param>
-        /// <param name="function">Delegate of the function.</param>
-        public void AddFunction(string name, CustomFunction function)
-            => CustomFunctions.Add(name.ToLower(), function);
-
-        /// <summary>
-        /// Removes a function from the mathematical expression.
-        /// </summary>
-        /// <param name="name">Name of the function as found in the string mathematical expression.</param>
-        public void RemoveFunction(string name)
-            => CustomFunctions.Remove(name.ToLower());
-
-        /// <summary>
-        /// Removes all functions which have been previously added to the expression.
-        /// </summary>
-        public void ClearFunction() => CustomFunctions.Clear();
-
-        private string SwapInCacheValues(string text)
-        {
-            var copy = new string(text);
-
-            while (true)
-            {
-                int begIndex = copy.IndexOf('$');
-                int endIndex = copy.IndexOf('$', begIndex + 1);
-
-                if (begIndex >= 0 && endIndex > begIndex)
-                {
-                    var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
-                    copy = copy.Replace($"${cacheKey}$", GetPreComputedCacheItem(cacheKey).ComputedValue?.ToString(PrecisionFormat) ?? "null");
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            return copy;
-        }
-
-        /// <summary>
-        /// Evaluates the expression, processing all variables and functions.
-        /// </summary>
-        public double? Evaluate()
-        {
-            ResetState();
-
-            bool isComplete;
-            do
-            {
-                //Get a sub-expression from the whole expression.
-                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
-                //Compute the sub-expression.
-                var resultString = subExpression.Compute();
-                //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
-                WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
-            } while (!isComplete);
-
-            if (WorkingText[0] == '$')
-            {
-                return GetPreComputedCacheItem(WorkingText.AsSpan()[1..^1]).ComputedValue;
-            }
-
-            return StringToDouble(WorkingText);
-        }
-
-        /// <summary>
-        /// Evaluates the expression, processing all variables and functions.
-        /// </summary>
-        /// <param name="showWork">Output parameter for the operational explanation.</param>
-        /// <returns></returns>
-        public double? Evaluate(out string showWork)
-        {
-            ResetState();
-
-            StringBuilder work = new();
-
-            work.AppendLine("{");
-
-            bool isComplete;
-            do
-            {
-                //Get a sub-expression from the whole expression.
-                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
-
-                string friendlySubExpression = SwapInCacheValues(subExpression.Text);
-                work.Append("    " + friendlySubExpression);
-
-                //Compute the sub-expression.
-                var resultString = subExpression.Compute();
-
-                work.AppendLine($" = {SwapInCacheValues(resultString)}");
-
-                //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
-                WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
-            } while (!isComplete);
-
-            work.AppendLine($"}} = {SwapInCacheValues(WorkingText)}");
-
-            if (WorkingText[0] == '$')
-            {
-                showWork = work.ToString();
-                return GetPreComputedCacheItem(WorkingText.AsSpan()[1..^1]).ComputedValue;
-            }
-
-            showWork = work.ToString();
-            return StringToDouble(WorkingText);
-        }
-
-        internal void ResetState()
-        {
-            NextPreParsedCacheKey = 0;
-            WorkingText = Text; //Start with a pre-sanitized/validated copy of the supplied expression text.
-
-            _nextPreComputedCacheKey = _originalNextPreComputedCacheKey; //To account for the NULL replacements during sanitization.
-
-            //Swap out all of the user supplied parameters.
-            foreach (var variable in DiscoveredVariables.OrderByDescending(o => o.Length))
-            {
-                if (_definedParameters.TryGetValue(variable, out var value))
-                {
-                    var cacheKey = ConsumeNextPreComputedCacheKey(out int cacheIndex);
-                    PreComputedCache[cacheIndex] = new PreComputedCacheItem()
-                    {
-                        ComputedValue = value,
-                        IsVariable = true
-                    };
-                    WorkingText = WorkingText.Replace(variable, cacheKey);
-                }
-                else
-                {
-                    throw new Exception($"Undefined variable: {variable}");
-                }
-            }
-        }
-
-        internal double? ExpToDouble(string exp)
-        {
-            if (exp.Length == 0)
-            {
-                return null;
-            }
-            if (exp[0] == '$')
-            {
-                return GetPreComputedCacheItem(exp.AsSpan()[1..^1]).ComputedValue;
-            }
-            return StringToDouble(exp);
-        }
-
-        internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
-        {
-            _replaceRangeBuilder.Clear();
-            int i;
-
-            for (i = 0; i < startIndex; i++)
-            {
-                _replaceRangeBuilder.Append(original[i]);
-            }
-
-            _replaceRangeBuilder.Append(replacement);
-
-            for (i = endIndex + 1; i < original.Length; i++)
-            {
-                _replaceRangeBuilder.Append(original[i]);
-            }
-
-            return _replaceRangeBuilder.ToString();
-        }
-
-        /// <summary>
-        /// Gets a sub-expression from WorkingText and replaces it with a token.
-        /// </summary>
-        /// <returns></returns>
-        internal bool AcquireSubexpression(out int outStartIndex, out int outEndIndex, out SubExpression outSubExpression)
-        {
-            int lastParenIndex = WorkingText.LastIndexOf('(');
-
-            string subExpression = string.Empty;
-
-            if (lastParenIndex >= 0)
-            {
-                outStartIndex = lastParenIndex;
-
-                int scope = 0;
-                int i = lastParenIndex;
-
-                for (; i < WorkingText.Length; i++)
-                {
-                    if (char.IsWhiteSpace(WorkingText[i]))
-                    {
-                        continue;
-                    }
-                    else if (WorkingText[i] == '(')
-                    {
-                        subExpression += WorkingText[i];
-                        scope++;
-                    }
-                    else if (WorkingText[i] == ')')
-                    {
-                        subExpression += WorkingText[i];
-                        scope--;
-
-                        if (scope == 0)
-                        {
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        subExpression += WorkingText[i];
-                    }
-                }
-
-                if (scope != 0)
-                {
-                    throw new Exception($"Parenthesizes mismatch when parsing subexpression.");
-                }
-
-                if (subExpression.StartsWith('(') == false || subExpression.EndsWith(')') == false)
-                {
-                    throw new Exception($"Sub-expression should be enclosed in parenthesizes.");
-                }
-
-                outEndIndex = i;
-
-                outSubExpression = new SubExpression(this, subExpression);
-                return false;
-            }
-            else
-            {
-                outStartIndex = 0;
-                outEndIndex = WorkingText.Length - 1;
-                subExpression = WorkingText;
-
-                outSubExpression = new SubExpression(this, subExpression);
-                return true;
-            }
         }
 
         internal string Sanitize(string expressionText)
@@ -525,13 +97,14 @@ namespace NTDLS.ExpressionParser
             var regex = RegExNullCheck();
 
             //Find and replace all NULL literals with cache keys.
+            //These cache entries contain NULL by default, so no need to set them.
             while (true)
             {
                 var match = regex.Match(expressionText);
                 if (!match.Success)
                     break;
 
-                var cacheKey = ConsumeNextPreComputedCacheKey(out _);
+                _ = ConsumeNextPreComputedCacheSlot(out var cacheKey);
                 expressionText = ReplaceRange(expressionText, match.Index, (match.Index + match.Length) - 1, cacheKey);
 
                 _operationCount++;
@@ -630,7 +203,8 @@ namespace NTDLS.ExpressionParser
                 }
                 else if (Utility.IsValidVariableChar(expressionText[i]))
                 {
-                    //Parse the variable/function name and determine which it is. If its a function, then we want to swap out the opening and closing parenthesizes with curly braces.
+                    //Parse the variable/function name and determine which it is. If its a function,
+                    //then we want to swap out the opening and closing parenthesizes with curly braces.
 
                     string functionOrVariableName = string.Empty;
                     bool isFunction = false;
@@ -664,8 +238,8 @@ namespace NTDLS.ExpressionParser
                         DiscoveredFunctions.Add(functionOrVariableName);
 
                         string functionExpression = string.Empty;
-                        //If its a function, then lets find the opening and closing parenthesizes and replace them with curly braces.
 
+                        //If its a function, then lets find the opening and closing parenthesizes and replace them with curly braces.
                         int functionScope = 0;
 
                         for (; i < expressionText.Length; i++)
@@ -743,13 +317,457 @@ namespace NTDLS.ExpressionParser
             return result;
         }
 
+
+        #endregion
+
+        #region Pre-Parsed Cache Management.
+
+        internal int ConsumeNextPreParsedCacheSlot()
+        {
+            return _nextPreParsedCacheSlot++;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool TryGetPreParsedCache(int slot, [NotNullWhen(true)] out PreParsedCacheItem value)
+        {
+            if (slot < _preParsedCache.Length)
+            {
+                var cached = _preParsedCache[slot];
+                if (cached != null)
+                {
+                    value = cached.Value;
+                    return true;
+                }
+            }
+            value = default;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void StorePreParsedCache(int slot, in PreParsedCacheItem value)
+        {
+            if (slot >= _preParsedCache.Length) //Resize the cache if needed.
+            {
+                int newSize = _preParsedCache.Length * 2;
+                var newArray = new PreParsedCacheItem?[newSize];
+                Array.Copy(_preParsedCache, newArray, _preParsedCache.Length);
+                _preParsedCache = newArray;
+            }
+            _preParsedCache[slot] = value;
+        }
+
+        #endregion
+
+        #region Pre-Computed Cache Management.
+
+        private int ConsumeNextPreComputedCacheSlot(out string cacheKey)
+        {
+            int cacheSlot = _nextPreComputedCacheSlot++;
+            cacheKey = $"${cacheSlot}$";
+            return cacheSlot;
+        }
+
+        internal string StorePreComputedCacheItem(double? value, bool isVariable = false)
+        {
+            var cacheSlot = ConsumeNextPreComputedCacheSlot(out var cacheKey);
+
+            if (cacheSlot >= _preComputedCache.Length) //Resize the cache if needed.
+            {
+                int newSize = _preComputedCache.Length * 2;
+                var newArray = new PreComputedCacheItem[newSize];
+                Array.Copy(_preComputedCache, newArray, _preComputedCache.Length);
+                _preComputedCache = newArray;
+            }
+
+            _preComputedCache[cacheSlot] = new PreComputedCacheItem()
+            {
+                IsVariable = isVariable,
+                ComputedValue = value
+            };
+
+            return cacheKey;
+        }
+
+        internal PreComputedCacheItem GetPreComputedCacheItem(ReadOnlySpan<char> span)
+        {
+            switch (span.Length)
+            {
+                case 1:
+                    return _preComputedCache[span[0] - '0'];
+                default:
+                    int index = 0;
+                    for (int i = 0; i < span.Length; i++)
+                        index = index * 10 + (span[i] - '0');
+                    return _preComputedCache[index];
+            }
+        }
+
+        #endregion
+
+        #region Evaluate.
+
+        /// <summary>
+        /// Evaluates the expression, processing all variables and functions.
+        /// </summary>
+        public double? Evaluate()
+        {
+            ResetState();
+
+            bool isComplete;
+            do
+            {
+                //Get a sub-expression from the whole expression.
+                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
+                //Compute the sub-expression.
+                var resultString = subExpression.Compute();
+                //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
+                WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
+            } while (!isComplete);
+
+            if (WorkingText[0] == '$')
+            {
+                return GetPreComputedCacheItem(WorkingText.AsSpan()[1..^1]).ComputedValue;
+            }
+
+            return StringToDouble(WorkingText);
+        }
+
+        /// <summary>
+        /// Evaluates the expression, processing all variables and functions.
+        /// </summary>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        /// <returns></returns>
+        public double? Evaluate(out string showWork)
+        {
+            ResetState();
+
+            StringBuilder work = new();
+
+            work.AppendLine("{");
+
+            bool isComplete;
+            do
+            {
+                //Get a sub-expression from the whole expression.
+                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
+
+                string friendlySubExpression = SwapInCacheValues(subExpression.Text);
+                work.Append("    " + friendlySubExpression);
+
+                //Compute the sub-expression.
+                var resultString = subExpression.Compute();
+
+                work.AppendLine($" = {SwapInCacheValues(resultString)}");
+
+                //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
+                WorkingText = ReplaceRange(WorkingText, startIndex, endIndex, resultString);
+            } while (!isComplete);
+
+            work.AppendLine($"}} = {SwapInCacheValues(WorkingText)}");
+
+            if (WorkingText[0] == '$')
+            {
+                showWork = work.ToString();
+                return GetPreComputedCacheItem(WorkingText.AsSpan()[1..^1]).ComputedValue;
+            }
+
+            showWork = work.ToString();
+            return StringToDouble(WorkingText);
+        }
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        public static double? Evaluate(string expression, out string showWork)
+            => new Expression(expression).Evaluate(out showWork);
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="precision">Number of significant digits used in calculations.</param>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        public static double? Evaluate(string expression, int precision, out string showWork)
+            => new Expression(expression, precision).Evaluate(out showWork);
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="precision">Number of significant digits used in calculations.</param>
+        public static double? Evaluate(string expression, int precision)
+            => new Expression(expression, precision).Evaluate();
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        public static double? Evaluate(string expression)
+            => new Expression(expression).Evaluate();
+
+        #endregion
+
+        #region Evaluate Not Null.
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
+        public static double EvaluateNotNull(string expression, out string showWork, out bool outResultWasNull)
+        {
+            var result = new Expression(expression).Evaluate(out showWork);
+            outResultWasNull = result == null;
+            return result ?? 0;
+        }
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="precision">Number of significant digits used in calculations.</param>
+        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
+        public static double EvaluateNotNull(string expression, int precision, out string showWork, out bool outResultWasNull)
+        {
+            var result = new Expression(expression, precision).Evaluate(out showWork);
+            outResultWasNull = result == null;
+            return result ?? 0;
+        }
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="precision">Number of significant digits used in calculations.</param>
+        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
+        public static double EvaluateNotNull(string expression, int precision, out bool outResultWasNull)
+        {
+            var result = new Expression(expression, precision).Evaluate();
+            outResultWasNull = result == null;
+            return result ?? 0;
+        }
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
+        public static double EvaluateNotNull(string expression, out bool outResultWasNull)
+        {
+            var result = new Expression(expression).Evaluate();
+            outResultWasNull = result == null;
+            return result ?? 0;
+        }
+
+        /// <summary>
+        /// Evaluates a mathematical expression.
+        /// </summary>
+        /// <param name="expression">Mathematical expression in string form.</param>
+        public static double EvaluateNotNull(string expression)
+             => new Expression(expression).Evaluate() ?? 0;
+
+        #endregion
+
+        #region Set/Get/Clear Parameters.
+
+        /// <summary>
+        /// Sets a parameter in the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
+        /// <param name="value">Value of the variable.</param>
+        public void SetParameter(string name, double? value) => _definedParameters[name] = value;
+
+        /// <summary>
+        /// Sets a parameter in the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
+        /// <param name="value">Value of the variable.</param>
+        public void SetParameter(string name, int? value) => _definedParameters[name] = value;
+
+        /// <summary>
+        /// Sets a parameter in the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
+        /// <param name="value">Value of the variable.</param>
+        public void SetParameter(string name, bool? value) => _definedParameters[name] = value == null ? null : value == true ? 1 : 0;
+
+        /// <summary>
+        /// Removed a parameter from the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
+        public void RemoveParameter(string name) => _definedParameters.Remove(name);
+
+        /// <summary>
+        /// Removes all parameters which have been previously added to the expression.
+        /// </summary>
+        public void ClearParameters() => _definedParameters.Clear();
+
+        #endregion
+
+        #region Add/Get/Clear Parameters.
+
+        /// <summary>
+        /// Adds a function to the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the function as found in the string mathematical expression.</param>
+        /// <param name="function">Delegate of the function.</param>
+        public void AddFunction(string name, ExpressionFunction function)
+            => ExpressionFunctions.Add(name.ToLower(), function);
+
+        /// <summary>
+        /// Removes a function from the mathematical expression.
+        /// </summary>
+        /// <param name="name">Name of the function as found in the string mathematical expression.</param>
+        public void RemoveFunction(string name)
+            => ExpressionFunctions.Remove(name.ToLower());
+
+        /// <summary>
+        /// Removes all functions which have been previously added to the expression.
+        /// </summary>
+        public void ClearFunctions() => ExpressionFunctions.Clear();
+
+        #endregion
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong HashCombine(ulong a, ulong b)
+            => a ^= b + 0x9e3779b97f4a7c15UL + (a << 6) + (a >> 2); //high entropy spread.
+
+        /// <summary>
+        /// Replaces placeholders in the input text with their corresponding precomputed cache values.
+        /// This function is only used when showing work, so performance is not critical.
+        /// </summary>
+        private string SwapInCacheValues(string text)
+        {
+            var copy = new string(text);
+
+            while (true)
+            {
+                int begIndex = copy.IndexOf('$');
+                int endIndex = copy.IndexOf('$', begIndex + 1);
+
+                if (begIndex >= 0 && endIndex > begIndex)
+                {
+                    var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
+                    copy = copy.Replace($"${cacheKey}$", GetPreComputedCacheItem(cacheKey).ComputedValue?.ToString(_precisionFormat) ?? "null");
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return copy;
+        }
+
+        internal void ResetState()
+        {
+            _nextPreParsedCacheSlot = 0;
+            WorkingText = _text; //Start with a pre-sanitized/validated copy of the supplied expression text.
+
+            _nextPreComputedCacheSlot = _originalNextPreComputedCacheSlot; //To account for the NULL replacements during sanitization.
+
+            //Swap out all of the user supplied parameters.
+            foreach (var variable in DiscoveredVariables.OrderByDescending(o => o.Length))
+            {
+                if (_definedParameters.TryGetValue(variable, out var value))
+                {
+                    var cacheSlot = ConsumeNextPreComputedCacheSlot(out var cacheKey);
+                    _preComputedCache[cacheSlot] = new PreComputedCacheItem()
+                    {
+                        ComputedValue = value,
+                        IsVariable = true
+                    };
+                    WorkingText = WorkingText.Replace(variable, cacheKey);
+                }
+                else
+                {
+                    throw new Exception($"Undefined variable: {variable}");
+                }
+            }
+        }
+
+        internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
+        {
+            _replaceRangeBuilder.Clear();
+            _replaceRangeBuilder.Append(original.AsSpan(0, startIndex));
+            _replaceRangeBuilder.Append(replacement);
+            _replaceRangeBuilder.Append(original.AsSpan(endIndex + 1));
+            return _replaceRangeBuilder.ToString();
+        }
+
+        /// <summary>
+        /// Gets a sub-expression from WorkingText and replaces it with a token.
+        /// </summary>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool AcquireSubexpression(out int outStartIndex, out int outEndIndex, out SubExpression outSubExpression)
+        {
+            int lastParenIndex = WorkingText.LastIndexOf('(');
+
+            if (lastParenIndex >= 0)
+            {
+                outStartIndex = lastParenIndex;
+
+                int scope = 0;
+                int i = lastParenIndex;
+
+                for (; i < WorkingText.Length; i++)
+                {
+                    char c = WorkingText[i];
+                    if (char.IsWhiteSpace(c))
+                        continue;
+
+                    if (c == '(')
+                    {
+                        scope++;
+                    }
+                    else if (c == ')')
+                    {
+                        scope--;
+                        if (scope == 0)
+                            break;
+                    }
+                }
+
+                if (scope != 0)
+                    throw new Exception("Parentheses mismatch when parsing subexpression.");
+
+                outEndIndex = i;
+
+                var subExprSpan = WorkingText.AsSpan(outStartIndex, outEndIndex - outStartIndex + 1);
+
+                if (subExprSpan[0] != '(' || subExprSpan[^1] != ')')
+                    throw new Exception("Sub-expression should be enclosed in parentheses.");
+
+                outSubExpression = new SubExpression(this, subExprSpan.ToString());
+                return false;
+            }
+            else
+            {
+                outStartIndex = 0;
+                outEndIndex = WorkingText.Length - 1;
+                outSubExpression = new SubExpression(this, WorkingText);
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Converts a string or value of a stored cache key into a double.
+        /// </summary>
+        /// <param name="span"></param>
+        /// <returns></returns>
+        /// <exception cref="FormatException"></exception>
         internal double? StringToDouble(ReadOnlySpan<char> span)
         {
             if (span.Length == 0)
             {
                 return null;
             }
-            if (span[0] == '$')
+            else if (span[0] == '$')
             {
                 return GetPreComputedCacheItem(span[1..^1]).ComputedValue;
             }
@@ -757,10 +775,14 @@ namespace NTDLS.ExpressionParser
             double result = 0.0;
             int length = span.Length;
             int i = 0;
+            double fraction;
+            double multiplier;
+            bool isNegative = false;
 
             if (length > 0 && (span[0] == '-' || span[0] == '+'))
             {
-                i++;
+                isNegative = span[0] == '-';
+                i++; //Skip the explicit sign.
             }
 
             for (; i < length; i++)
@@ -773,8 +795,8 @@ namespace NTDLS.ExpressionParser
                 {
                     i++; //Skip the decimal point.
 
-                    double fraction = 0.0;
-                    double multiplier = 1.0;
+                    fraction = 0.0;
+                    multiplier = 1.0;
 
                     for (; i < length; i++)
                     {
@@ -791,11 +813,7 @@ namespace NTDLS.ExpressionParser
                 else throw new FormatException("Invalid character in input string.");
             }
 
-            if (length > 0 && span[0] == '-')
-            {
-                return -result;
-            }
-            return result;
+            return isNegative ? -result : result;
         }
     }
 }

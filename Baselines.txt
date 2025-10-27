@@ -20,3 +20,5 @@ Best: 128.34, Worst: 274.05, Avg: 140.95, StdDev: 30.87 (Before NULL)
 Best: 124.36, Worst: 266.29, Avg: 137.29, StdDev: 29.90 (nullable)
 Best: 124.76, Worst: 275.61, Avg: 138.47, StdDev: 31.90
 Best: 120.28, Worst: 270.59, Avg: 133.42, StdDev: 31.77 (non-cachable params)
+Best: 118.41, Worst: 265.89, Avg: 131.71, StdDev: 31.11
+Best: 104.69, Worst: 263.81, Avg: 120.02, StdDev: 33.66 (AcquireSubexpression)

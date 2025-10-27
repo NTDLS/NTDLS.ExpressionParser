@@ -80,7 +80,7 @@ namespace NTDLS.ExpressionParser
                         var subExpression = new SubExpression(_parentExpression, buffer);
                         subExpression.Compute();
 
-                        var param = _parentExpression.ExpToDouble(subExpression.Text);
+                        var param = _parentExpression.StringToDouble(subExpression.Text);
                         if (param != null)
                         {
                             foundNull = foundNull || param == null;
@@ -108,7 +108,7 @@ namespace NTDLS.ExpressionParser
                 }
                 else
                 {
-                    if (_parentExpression.CustomFunctions.TryGetValue(foundFunction, out var customFunction))
+                    if (_parentExpression.ExpressionFunctions.TryGetValue(foundFunction, out var customFunction))
                     {
                         double functionResult = customFunction.Invoke(parameters.ToArray());
                         ReplaceRange(functionStartIndex, functionEndIndex, functionResult);
@@ -139,9 +139,9 @@ namespace NTDLS.ExpressionParser
                 //Pre-first-order:
                 while ((operatorIndex = GetFreestandingNotOperation(out _)) != -1)
                 {
-                    var preParsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
+                    var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheKey, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
                         ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -159,7 +159,7 @@ namespace NTDLS.ExpressionParser
                                 BeginPosition = operatorIndex,
                                 EndPosition = operatorIndex + outParsedLength
                             };
-                            _parentExpression.SetPreParsedCache(preParsedCacheKey, parsedNumber);
+                            _parentExpression.StorePreParsedCache(preParsedCacheSlot, parsedNumber);
                         }
                     }
                 }
@@ -168,9 +168,9 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.FirstOrderOperations, out string operation);
                 if (operatorIndex > 0)
                 {
-                    var preParsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
+                    var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheKey, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
                         ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -191,7 +191,7 @@ namespace NTDLS.ExpressionParser
                                 BeginPosition = beginPosition,
                                 EndPosition = endPosition
                             };
-                            _parentExpression.SetPreParsedCache(preParsedCacheKey, parsedNumber);
+                            _parentExpression.StorePreParsedCache(preParsedCacheSlot, parsedNumber);
                         }
                     }
 
@@ -202,9 +202,9 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.SecondOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    var preParsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
+                    var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheKey, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
                         ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -225,7 +225,7 @@ namespace NTDLS.ExpressionParser
                                 BeginPosition = beginPosition,
                                 EndPosition = endPosition
                             };
-                            _parentExpression.SetPreParsedCache(preParsedCacheKey, parsedNumber);
+                            _parentExpression.StorePreParsedCache(preParsedCacheSlot, parsedNumber);
                         }
                     }
                     continue;
@@ -235,9 +235,9 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.ThirdOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    var preParsedCacheKey = _parentExpression.NextPreParsedCacheKey++;
+                    var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheKey, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
                         ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -259,7 +259,7 @@ namespace NTDLS.ExpressionParser
                                 BeginPosition = beginPosition,
                                 EndPosition = endPosition
                             };
-                            _parentExpression.SetPreParsedCache(preParsedCacheKey, parsedNumber);
+                            _parentExpression.StorePreParsedCache(preParsedCacheSlot, parsedNumber);
                         }
                     }
                     continue;
@@ -274,21 +274,12 @@ namespace NTDLS.ExpressionParser
                 return Text;
             }
 
-            var cacheKey = _parentExpression.ConsumeNextPreComputedCacheKey(out int cacheIndex);
-            _parentExpression.PreComputedCache[cacheIndex] = new PreComputedCacheItem()
-            {
-                ComputedValue = _parentExpression.StringToDouble(Text)
-            };
-            return cacheKey;
+            return _parentExpression.StorePreComputedCacheItem(_parentExpression.StringToDouble(Text));
         }
 
         internal void ReplaceRange(int startIndex, int endIndex, double? value)
         {
-            var cacheKey = _parentExpression.ConsumeNextPreComputedCacheKey(out int cacheIndex);
-            _parentExpression.PreComputedCache[cacheIndex] = new PreComputedCacheItem()
-            {
-                ComputedValue = value
-            };
+            var cacheKey = _parentExpression.StorePreComputedCacheItem(value);
             Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);
         }
 
@@ -339,8 +330,8 @@ namespace NTDLS.ExpressionParser
                 }
                 i--;
                 outParsedLength = (operationIndex - i) - 1;
-                var key = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
-                var cachedItem = _parentExpression.GetPreComputedCacheItem(key);
+                var cacheKey = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
+                var cachedItem = _parentExpression.GetPreComputedCacheItem(cacheKey);
                 isCacheable = !cachedItem.IsVariable;
                 return cachedItem.ComputedValue;
             }
