@@ -297,6 +297,11 @@ namespace NTDLS.ExpressionParser
                 throw new Exception($"Scope mismatch while sanitizing input.");
             }
 
+            if (_operationCount == 0)
+            {
+                _operationCount++;
+            }
+
             return result.ToString();
         }
 
@@ -330,7 +335,7 @@ namespace NTDLS.ExpressionParser
         {
             if (slot >= _preParsedCache.Length) //Resize the cache if needed.
             {
-                Array.Resize(ref _preParsedCache, _preParsedCache.Length * 2);
+                Array.Resize(ref _preParsedCache, (_preParsedCache.Length + 1) * 2);
             }
             _preParsedCache[slot] = value;
         }
@@ -352,7 +357,7 @@ namespace NTDLS.ExpressionParser
 
             if (cacheSlot >= _preComputedCache.Length) //Resize the cache if needed.
             {
-                Array.Resize(ref _preComputedCache, _preComputedCache.Length * 2);
+                Array.Resize(ref _preComputedCache, (_preComputedCache.Length + 1) * 2);
             }
 
             _preComputedCache[cacheSlot] = new PreComputedCacheItem()

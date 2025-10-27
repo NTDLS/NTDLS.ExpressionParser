@@ -14,13 +14,7 @@ namespace TestHarness
 
         static void Main()
         {
-            var options = new ExpressionOptions()
-            {
-                DefaultNullValue = 0
-            };
-
-            var exp = new Expression("2 * myParam", options);
-            exp.SetParameter("myParam", (double?)null);
+            var exp = new Expression("10");
             Console.WriteLine(exp.Evaluate());
 
 
