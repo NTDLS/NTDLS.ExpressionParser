@@ -89,12 +89,15 @@ namespace NTDLS.ExpressionParser
 
         internal string Sanitize(string expressionText)
         {
-            string result = string.Empty;
+            var result = new StringBuilder();
+            var buffer = new StringBuilder();
 
             int scope = 0;
             int consecutiveMathChars = 0;
 
             var regex = RegExNullCheck();
+
+            var expressionSpan = expressionText.AsSpan();
 
             //Find and replace all NULL literals with cache keys.
             //These cache entries contain NULL by default, so no need to set them.
@@ -110,14 +113,17 @@ namespace NTDLS.ExpressionParser
                 _operationCount++;
             }
 
-            for (int i = 0; i < expressionText.Length;)
+            for (int i = 0; i < expressionSpan.Length;)
             {
-                if (char.IsWhiteSpace(expressionText[i]))
+                char c = expressionSpan[i];
+
+                if (char.IsWhiteSpace(c))
                 {
                     i++;
                     continue;
                 }
-                else if (Utility.IsMathChar(expressionText[i]))
+
+                if (Utility.IsMathChar(c))
                 {
                     _operationCount++;
                     consecutiveMathChars++;
@@ -125,10 +131,10 @@ namespace NTDLS.ExpressionParser
                     // If multiple operator characters appear in a row, that's a malformed expression.
                     if (consecutiveMathChars > 2)
                     {
-                        throw new Exception($"Invalid consecutive operators near position {i}: '{expressionText[i]}'");
+                        throw new Exception($"Invalid consecutive operators near position {i}: '{c}'");
                     }
 
-                    result += expressionText[i++];
+                    result.Append(expressionSpan[i++]);
                     continue;
                 }
                 else
@@ -137,29 +143,24 @@ namespace NTDLS.ExpressionParser
                     consecutiveMathChars = 0;
                 }
 
-                if (char.IsWhiteSpace(expressionText[i]))
-                {
-                    i++;
-                    continue;
-                }
-                else if (expressionText[i] == ',')
+                if (c == ',')
                 {
                     if (scope == 0)
                     {
                         throw new Exception("Unexpected comma found in expression.");
                     }
 
-                    result += expressionText[i++];
+                    result.Append(expressionSpan[i++]);
                     continue;
                 }
-                else if (expressionText[i] == '(')
+                else if (c == '(')
                 {
                     _operationCount++;
                     scope++;
-                    result += expressionText[i++];
+                    result.Append(expressionSpan[i++]);
                     continue;
                 }
-                else if (expressionText[i] == ')')
+                else if (c == ')')
                 {
                     scope--;
 
@@ -168,24 +169,26 @@ namespace NTDLS.ExpressionParser
                         throw new Exception($"Scope fell below zero while sanitizing input.");
                     }
 
-                    result += expressionText[i++];
+                    result.Append(expressionSpan[i++]);
                     continue;
                 }
-                else if (Utility.IsMathChar(expressionText[i]))
+                else if (Utility.IsMathChar(c))
                 {
                     _operationCount++;
-                    result += expressionText[i++];
+                    result.Append(expressionSpan[i++]);
                     continue;
                 }
-                else if (char.IsDigit(expressionText[i]))
+                else if (char.IsDigit(c))
                 {
-                    string buffer = string.Empty;
+                    buffer.Clear();
 
-                    for (; i < expressionText.Length; i++)
+                    for (; i < expressionSpan.Length; i++)
                     {
-                        if (char.IsDigit(expressionText[i]) || expressionText[i] == '.')
+                        c = expressionSpan[i];
+
+                        if (char.IsDigit(c) || c == '.')
                         {
-                            buffer += expressionText[i];
+                            buffer.Append(c);
                         }
                         else
                         {
@@ -193,33 +196,37 @@ namespace NTDLS.ExpressionParser
                         }
                     }
 
-                    if (Utility.IsNumeric(buffer) == false)
+                    var strBuffer = buffer.ToString();
+
+                    if (Utility.IsNumeric(strBuffer) == false)
                     {
-                        throw new Exception($"Value is not a number: {buffer}");
+                        throw new Exception($"Value is not a number: {strBuffer}");
                     }
 
-                    result += buffer;
+                    result.Append(strBuffer);
                     continue;
                 }
-                else if (Utility.IsValidVariableChar(expressionText[i]))
+                else if (Utility.IsValidVariableChar(c))
                 {
                     //Parse the variable/function name and determine which it is. If its a function,
                     //then we want to swap out the opening and closing parenthesizes with curly braces.
 
-                    string functionOrVariableName = string.Empty;
+                    buffer.Clear();
                     bool isFunction = false;
 
-                    for (; i < expressionText.Length; i++)
+                    for (; i < expressionSpan.Length; i++)
                     {
-                        if (char.IsWhiteSpace(expressionText[i]))
+                        c = expressionSpan[i];
+
+                        if (char.IsWhiteSpace(c))
                         {
                             continue;
                         }
-                        else if (Utility.IsValidVariableChar(expressionText[i]))
+                        else if (Utility.IsValidVariableChar(c))
                         {
-                            functionOrVariableName += expressionText[i];
+                            buffer.Append(c);
                         }
-                        else if (expressionText[i] == '(')
+                        else if (c == '(')
                         {
                             isFunction = true;
                             break;
@@ -230,32 +237,34 @@ namespace NTDLS.ExpressionParser
                         }
                     }
 
+                    var functionOrVariableName = buffer.ToString();
+
                     if (isFunction)
                     {
-                        result += functionOrVariableName; //Append the function name to the expression.
-
+                        result.Append(functionOrVariableName); //Append the function name to the expression.
                         _operationCount++;
                         DiscoveredFunctions.Add(functionOrVariableName);
 
-                        string functionExpression = string.Empty;
+                        buffer.Clear();
 
                         //If its a function, then lets find the opening and closing parenthesizes and replace them with curly braces.
                         int functionScope = 0;
 
-                        for (; i < expressionText.Length; i++)
+                        for (; i < expressionSpan.Length; i++)
                         {
-                            if (char.IsWhiteSpace(expressionText[i]))
+                            c = expressionSpan[i];
+
+                            if (char.IsWhiteSpace(c))
                             {
                                 continue;
                             }
-                            else if (expressionText[i] == '(')
+
+                            if (c == '(')
                             {
-                                functionExpression += expressionText[i];
                                 functionScope++;
                             }
-                            else if (expressionText[i] == ')')
+                            else if (c == ')')
                             {
-                                functionExpression += expressionText[i];
                                 functionScope--;
 
                                 if (functionScope == 0)
@@ -264,15 +273,12 @@ namespace NTDLS.ExpressionParser
                                     break;
                                 }
                             }
-                            else if (expressionText[i] == ',')
+                            else if (c == ',')
                             {
-                                functionExpression += expressionText[i];
                                 _operationCount++;
                             }
-                            else
-                            {
-                                functionExpression += expressionText[i];
-                            }
+
+                            buffer.Append(c);
                         }
 
                         if (functionScope != 0)
@@ -280,32 +286,32 @@ namespace NTDLS.ExpressionParser
                             throw new Exception($"Parenthesizes mismatch when parsing function scope: {functionOrVariableName}");
                         }
 
-                        var functionParameterString = Sanitize(functionExpression);
+                        var functionParameterString = Sanitize(buffer.ToString());
 
                         if (functionParameterString.StartsWith('(') == false || functionParameterString.EndsWith(')') == false)
                         {
                             throw new Exception($"The function scope should be enclosed in parenthesizes.");
                         }
 
-                        result += $"{{{functionParameterString[1..^1]}}}";
+                        result.AppendFormat("{{{0}}}", functionParameterString[1..^1]);
                     }
                     else
                     {
-                        result += functionOrVariableName; //Append the function name to the expression.
+                        result.Append(functionOrVariableName); //Append the function name to the expression.
 
                         _operationCount++;
                         DiscoveredVariables.Add(functionOrVariableName);
                     }
                 }
-                else if (expressionText[i] == '$')
+                else if (c == '$')
                 {
                     _operationCount++;
-                    result += expressionText[i++];
+                    result.Append(expressionSpan[i++]);
                     continue;
                 }
                 else
                 {
-                    throw new Exception($"Unhandled character {expressionText[i]}");
+                    throw new Exception($"Unhandled character {c}");
                 }
             }
 
@@ -314,9 +320,8 @@ namespace NTDLS.ExpressionParser
                 throw new Exception($"Scope mismatch while sanitizing input.");
             }
 
-            return result;
+            return result.ToString();
         }
-
 
         #endregion
 
