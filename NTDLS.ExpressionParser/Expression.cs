@@ -1,28 +1,24 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.IO.Hashing;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace NTDLS.ExpressionParser
 {
+
     /// <summary>
     /// Represents a mathematical expression.
     /// </summary>
     public partial class Expression
     {
-        [GeneratedRegex(@"\bnull\b", RegexOptions.IgnoreCase, "en-US")]
-        internal static partial Regex RegExNullCheck();
-
         /// <summary>
         /// Delegate for calling a custom function.
         /// </summary>
-        public delegate double ExpressionFunction(double[] parameters);
+        public delegate double? ExpressionFunction(double[] parameters);
 
         private int _nextPreParsedCacheSlot = 0;
-        private readonly ulong _expressionHash;
+        private readonly int _expressionHash;
         private PreComputedCacheItem[] _preComputedCache;
         private readonly string _text = string.Empty;
         private readonly string _precisionFormat;
@@ -48,13 +44,13 @@ namespace NTDLS.ExpressionParser
         {
             Options = options ?? new ExpressionOptions();
             _precisionFormat = $"G{Options.Precision}";
-            _text = Sanitize(text.ToLower());
+            _text = Sanitize(text.ToLowerInvariant());
             _originalNextPreComputedCacheSlot = _nextPreComputedCacheSlot;
             _preComputedCache = new PreComputedCacheItem[_operationCount];
 
             if (Options.UseParserCache)
             {
-                _expressionHash = HashCombine(XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(_text)), Options.Precision);
+                _expressionHash = HashCode.Combine(_text, Options);
 
                 _preParsedCache = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
                 {
@@ -75,7 +71,7 @@ namespace NTDLS.ExpressionParser
             int scope = 0;
             int consecutiveMathChars = 0;
 
-            var regex = RegExNullCheck();
+            var regex = CompiledRegEx.RegExNullCheck();
 
             //Find and replace all NULL literals with cache keys.
             //These cache entries contain NULL by default, so no need to set them.
@@ -520,27 +516,27 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, double? value) => _definedParameters[name] = value;
+        public void SetParameter(string name, double? value) => _definedParameters[name.ToLowerInvariant()] = value;
 
         /// <summary>
         /// Sets a parameter in the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, int? value) => _definedParameters[name] = value;
+        public void SetParameter(string name, int? value) => _definedParameters[name.ToLowerInvariant()] = value;
 
         /// <summary>
         /// Sets a parameter in the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, bool? value) => _definedParameters[name] = value == null ? null : value == true ? 1 : 0;
+        public void SetParameter(string name, bool? value) => _definedParameters[name.ToLowerInvariant()] = value == null ? null : value == true ? 1 : 0;
 
         /// <summary>
         /// Removed a parameter from the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
-        public void RemoveParameter(string name) => _definedParameters.Remove(name);
+        public void RemoveParameter(string name) => _definedParameters.Remove(name.ToLowerInvariant());
 
         /// <summary>
         /// Removes all parameters which have been previously added to the expression.
@@ -557,14 +553,14 @@ namespace NTDLS.ExpressionParser
         /// <param name="name">Name of the function as found in the string mathematical expression.</param>
         /// <param name="function">Delegate of the function.</param>
         public void AddFunction(string name, ExpressionFunction function)
-            => ExpressionFunctions.Add(name.ToLower(), function);
+            => ExpressionFunctions.Add(name.ToLowerInvariant(), function);
 
         /// <summary>
         /// Removes a function from the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the function as found in the string mathematical expression.</param>
         public void RemoveFunction(string name)
-            => ExpressionFunctions.Remove(name.ToLower());
+            => ExpressionFunctions.Remove(name.ToLowerInvariant());
 
         /// <summary>
         /// Removes all functions which have been previously added to the expression.
@@ -609,17 +605,17 @@ namespace NTDLS.ExpressionParser
             _nextPreParsedCacheSlot = 0;
             WorkingText = _text; //Start with a pre-sanitized/validated copy of the supplied expression text.
 
-            for(int i = 0; i< _nextPreComputedCacheSlot; i++)
+            _nextPreComputedCacheSlot = _originalNextPreComputedCacheSlot; //To account for the NULL replacements during sanitization.
+
+            for (int i = 0; i < _originalNextPreComputedCacheSlot; i++)
             {
                 _preComputedCache[i] = new PreComputedCacheItem()
                 {
-                    ComputedValue = null,
+                    ComputedValue = Options.DefaultNullValue,
                     IsVariable = false,
                     IsNullValue = true
                 };
             }
-
-            _nextPreComputedCacheSlot = _originalNextPreComputedCacheSlot; //To account for the NULL replacements during sanitization.
 
             //Swap out all of the user supplied parameters.
             foreach (var variable in DiscoveredVariables.OrderByDescending(o => o.Length))
@@ -629,7 +625,7 @@ namespace NTDLS.ExpressionParser
                     var cacheSlot = ConsumeNextPreComputedCacheSlot(out var cacheKey);
                     _preComputedCache[cacheSlot] = new PreComputedCacheItem()
                     {
-                        ComputedValue = value,
+                        ComputedValue = value ?? Options.DefaultNullValue,
                         IsVariable = true
                     };
                     WorkingText = WorkingText.Replace(variable, cacheKey);

@@ -116,7 +116,7 @@ namespace NTDLS.ExpressionParser
                 {
                     if (_parentExpression.ExpressionFunctions.TryGetValue(foundFunction, out var customFunction))
                     {
-                        double functionResult = customFunction.Invoke(parameters.ToArray());
+                        var functionResult = customFunction.Invoke(parameters.ToArray()) ?? _parentExpression.Options.DefaultNullValue;
                         SwapInCacheKey(functionStartIndex, functionEndIndex, functionResult);
                     }
                     else

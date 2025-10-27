@@ -14,7 +14,17 @@ namespace TestHarness
 
         static void Main()
         {
-            EvalPrint("pow(2, 3)");
+            var options = new ExpressionOptions()
+            {
+                DefaultNullValue = 0
+            };
+
+            var exp = new Expression("2 * myParam", options);
+            exp.SetParameter("myParam", (double?)null);
+            Console.WriteLine(exp.Evaluate());
+
+
+            //EvalPrint("pow(2, 3)");
             /*
             var f = Expression.Evaluate("pow(sin(1), 2) + pow(cos(1), 2)", out string work);
             //var f = Expression.Evaluate("2 + 3 * (4 - 1 + (2))");
@@ -22,7 +32,7 @@ namespace TestHarness
             Console.WriteLine(f);
             Console.WriteLine(work);
             */
-
+            /*
             var expression = new Expression("10 * 5 * extra");
 
             expression.SetParameter("extra", 1000);
@@ -32,6 +42,7 @@ namespace TestHarness
             Console.WriteLine(expression.Evaluate());
 
             EvalPrint("2 * sum(1,null,3)");
+            */
             //EvalPrint("1 + (2 + 3)");
             //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
 
