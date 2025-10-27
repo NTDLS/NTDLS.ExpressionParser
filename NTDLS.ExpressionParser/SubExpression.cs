@@ -1,10 +1,13 @@
 ﻿using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
     internal class SubExpression
     {
         private readonly Expression _parentExpression;
+        private StringBuilder _buffer = new();
+
         public string Text { get; internal set; }
 
         public SubExpression(Expression parentExpression, string text)
@@ -15,15 +18,17 @@ namespace NTDLS.ExpressionParser
 
         private int GetStartingIndexOfLastFunctionCall(out string foundFunction)
         {
+            ReadOnlySpan<char> span = Text.AsSpan();
+
             int foundIndex = -1;
 
             foundFunction = string.Empty;
 
             foreach (var function in _parentExpression.DiscoveredFunctions)
             {
-                int index = Text.LastIndexOf(function);
+                int index = span.LastIndexOf(function);
                 if (index >= 0 && index > foundIndex
-                    && (index == 0 || !Utility.IsValidVariableChar(Text[index - 1]))) //Must not be part of a larger function name.
+                    && (index == 0 || !Utility.IsValidVariableChar(span[index - 1]))) //Must not be part of a larger function name.
                 {
                     foundIndex = index;
                     foundFunction = function;
@@ -40,7 +45,8 @@ namespace NTDLS.ExpressionParser
 
             if (functionStartIndex >= 0)
             {
-                string buffer = string.Empty;
+                _buffer.Clear();
+
                 int scope = 0;
 
                 var parameters = new List<double>();
@@ -53,7 +59,7 @@ namespace NTDLS.ExpressionParser
                 {
                     if (Text[i] == ',')
                     {
-                        var subExpression = new SubExpression(_parentExpression, buffer);
+                        var subExpression = new SubExpression(_parentExpression, _buffer.ToString());
                         subExpression.Compute();
 
                         var param = _parentExpression.StringToDouble(subExpression.Text);
@@ -62,7 +68,7 @@ namespace NTDLS.ExpressionParser
                         {
                             parameters.Add(param ?? 0);
                         }
-                        buffer = string.Empty;
+                        _buffer.Clear();
                     }
                     else if (Text[i] == '{')
                     {
@@ -77,7 +83,7 @@ namespace NTDLS.ExpressionParser
                             throw new Exception("Unexpected function nesting.");
                         }
 
-                        var subExpression = new SubExpression(_parentExpression, buffer);
+                        var subExpression = new SubExpression(_parentExpression, _buffer.ToString());
                         subExpression.Compute();
 
                         var param = _parentExpression.StringToDouble(subExpression.Text);
@@ -90,7 +96,7 @@ namespace NTDLS.ExpressionParser
                     }
                     else
                     {
-                        buffer += Text[i];
+                        _buffer.Append(Text[i]);
                     }
                 }
 
@@ -98,20 +104,20 @@ namespace NTDLS.ExpressionParser
 
                 if (foundNull)
                 {
-                    ReplaceRange(functionStartIndex, functionEndIndex, null);
+                    SwapInCacheKey(functionStartIndex, functionEndIndex, null);
                     return true;
                 }
                 else if (Utility.IsNativeFunction(foundFunction))
                 {
                     double functionResult = Utility.ComputeNativeFunction(foundFunction, parameters.ToArray());
-                    ReplaceRange(functionStartIndex, functionEndIndex, functionResult);
+                    SwapInCacheKey(functionStartIndex, functionEndIndex, functionResult);
                 }
                 else
                 {
                     if (_parentExpression.ExpressionFunctions.TryGetValue(foundFunction, out var customFunction))
                     {
                         double functionResult = customFunction.Invoke(parameters.ToArray());
-                        ReplaceRange(functionStartIndex, functionEndIndex, functionResult);
+                        SwapInCacheKey(functionStartIndex, functionEndIndex, functionResult);
                     }
                     else
                     {
@@ -141,17 +147,18 @@ namespace NTDLS.ExpressionParser
                 {
                     var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.Options.UseParserCache
+                        && _parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
-                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
+                        SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
                     else
                     {
                         var rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength, out bool isCacheable);
                         int notResult = (rightValue == 0) ? 1 : 0;
-                        ReplaceRange(operatorIndex, operatorIndex + outParsedLength, notResult);
+                        SwapInCacheKey(operatorIndex, operatorIndex + outParsedLength, notResult);
 
-                        if (isCacheable)
+                        if (isCacheable && _parentExpression.Options.UseParserCache)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -170,9 +177,10 @@ namespace NTDLS.ExpressionParser
                 {
                     var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.Options.UseParserCache
+                        && _parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
-                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
+                        SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
                     else
                     {
@@ -182,8 +190,8 @@ namespace NTDLS.ExpressionParser
                             calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                         }
 
-                        ReplaceRange(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable)
+                        SwapInCacheKey(beginPosition, endPosition, calculatedResult);
+                        if (isCacheable && _parentExpression.Options.UseParserCache)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -204,9 +212,10 @@ namespace NTDLS.ExpressionParser
                 {
                     var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.Options.UseParserCache
+                        && _parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
-                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
+                        SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
                     else
                     {
@@ -216,8 +225,8 @@ namespace NTDLS.ExpressionParser
                             calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                         }
 
-                        ReplaceRange(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable)
+                        SwapInCacheKey(beginPosition, endPosition, calculatedResult);
+                        if (isCacheable && _parentExpression.Options.UseParserCache)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -237,9 +246,10 @@ namespace NTDLS.ExpressionParser
                 {
                     var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.Options.UseParserCache
+                        && _parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
-                        ReplaceRange(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
+                        SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
                     else
                     {
@@ -250,8 +260,8 @@ namespace NTDLS.ExpressionParser
                             calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                         }
 
-                        ReplaceRange(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable)
+                        SwapInCacheKey(beginPosition, endPosition, calculatedResult);
+                        if (isCacheable && _parentExpression.Options.UseParserCache)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -277,7 +287,7 @@ namespace NTDLS.ExpressionParser
             return _parentExpression.StorePreComputedCacheItem(_parentExpression.StringToDouble(Text));
         }
 
-        internal void ReplaceRange(int startIndex, int endIndex, double? value)
+        internal void SwapInCacheKey(int startIndex, int endIndex, double? value)
         {
             var cacheKey = _parentExpression.StorePreComputedCacheItem(value);
             Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);
@@ -290,7 +300,7 @@ namespace NTDLS.ExpressionParser
         {
             while (Text.StartsWith('(') && Text.EndsWith(')'))
             {
-                Text = Text.Substring(1, Text.Length - 2);
+                Text = Text[1..^1];
             }
         }
 
@@ -397,21 +407,33 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        private int GetFreestandingNotOperation(out string outFoundOperation) //Pre order.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetFreestandingNotOperation(out string outFoundOperation)
         {
-            for (int i = 0; i < Text.Length; i++)
+            ReadOnlySpan<char> span = Text.AsSpan();
+            int len = span.Length - 1;
+
+            for (int i = 0; i < len; i++)
             {
                 //Make sure we have a "!' and not a "!=", these two have to be handled in different places.
-                if (Text[i] == '!' && (i + 1 < Text.Length) && Text[i + 1] != '=')
+                if (span[i] == '!' && span[i + 1] != '=')
                 {
-                    outFoundOperation = Text[i].ToString();
+                    outFoundOperation = "!";
                     return i;
                 }
             }
 
-            outFoundOperation = string.Empty; //No operation found.
+            // Check last char separately
+            if (len >= 0 && span[len] == '!')
+            {
+                outFoundOperation = "!";
+                return len;
+            }
+
+            outFoundOperation = string.Empty;
             return -1;
         }
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int GetIndexOfOperation(ReadOnlySpan<char> validOperations, out string foundOperation)

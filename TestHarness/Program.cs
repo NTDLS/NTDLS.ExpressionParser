@@ -14,6 +14,7 @@ namespace TestHarness
 
         static void Main()
         {
+            EvalPrint("pow(2, 3)");
             /*
             var f = Expression.Evaluate("pow(sin(1), 2) + pow(cos(1), 2)", out string work);
             //var f = Expression.Evaluate("2 + 3 * (4 - 1 + (2))");
@@ -89,7 +90,7 @@ namespace TestHarness
             var stopwatch = Stopwatch.StartNew();
             for (int i = 0; i < iterations; i++)
             {
-                expression.Evaluate(); //Typically takes ~1µs.
+                expression.Evaluate(); //Typically takes ~0.9µs.
             }
             stopwatch.Stop();
 

@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO.Hashing;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -19,22 +20,20 @@ namespace NTDLS.ExpressionParser
         /// Delegate for calling a custom function.
         /// </summary>
         public delegate double ExpressionFunction(double[] parameters);
-        /// <summary>
-        /// Gets or sets the number of significant digits used in calculations.
-        /// </summary>
-        public int Precision { get; set; } = 17;
+
         private int _nextPreParsedCacheSlot = 0;
-        private ulong _expressionHash;
+        private readonly ulong _expressionHash;
         private PreComputedCacheItem[] _preComputedCache;
         private readonly string _text = string.Empty;
-        private string _precisionFormat = "G17";
-        private volatile PreParsedCacheItem?[] _preParsedCache;
+        private readonly string _precisionFormat;
+        private PreParsedCacheItem?[] _preParsedCache;
         private readonly Dictionary<string, double?> _definedParameters = new();
-        private readonly StringBuilder _replaceRangeBuilder = new();
+        private readonly StringBuilder _buffer = new();
         private int _nextPreComputedCacheSlot = 0;
         private readonly int _originalNextPreComputedCacheSlot = 0;
         private int _operationCount = 0;
 
+        internal ExpressionOptions Options { get; set; }
         internal string WorkingText { get; set; } = string.Empty;
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
@@ -45,52 +44,36 @@ namespace NTDLS.ExpressionParser
         /// <summary>
         /// Represents a mathematical expression.
         /// </summary>
-        public Expression(string text)
+        public Expression(string text, ExpressionOptions? options = null)
         {
-            _precisionFormat = $"G{Precision}";
+            Options = options ?? new ExpressionOptions();
+            _precisionFormat = $"G{Options.Precision}";
             _text = Sanitize(text.ToLower());
             _originalNextPreComputedCacheSlot = _nextPreComputedCacheSlot;
             _preComputedCache = new PreComputedCacheItem[_operationCount];
 
-            _expressionHash = HashCombine(
-                XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(_text)),
-                (ulong)Precision
-            );
-
-            _preParsedCache = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
+            if (Options.UseParserCache)
             {
-                entry.SlidingExpiration = TimeSpan.FromMinutes(5);
-                return new PreParsedCacheItem?[_operationCount];
-            }) ?? throw new Exception("Failed to create persistent cache.");
-        }
+                _expressionHash = HashCombine(
+                    XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(_text)),
+                    (ulong)Options.Precision
+                );
 
-        /// <summary>
-        /// Represents a mathematical expression.
-        /// </summary>
-        public Expression(string text, int precision)
-        {
-            Precision = precision;
-            _precisionFormat = $"G{Precision}";
-            _text = Sanitize(text.ToLower());
-            _originalNextPreComputedCacheSlot = _nextPreComputedCacheSlot;
-            _preComputedCache = new PreComputedCacheItem[_operationCount];
-
-            _expressionHash = HashCombine(
-                XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(_text)),
-                (ulong)Precision
-            );
-
-            _preParsedCache = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
+                _preParsedCache = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
+                {
+                    entry.SlidingExpiration = TimeSpan.FromMinutes(5);
+                    return new PreParsedCacheItem?[_operationCount];
+                }) ?? throw new Exception("Failed to create persistent cache.");
+            }
+            else
             {
-                entry.SlidingExpiration = TimeSpan.FromMinutes(5);
-                return new PreParsedCacheItem?[_operationCount];
-            }) ?? throw new Exception("Failed to create persistent cache.");
+                _preParsedCache = [];
+            }
         }
 
         internal string Sanitize(string expressionText)
         {
             var result = new StringBuilder();
-            var buffer = new StringBuilder();
 
             int scope = 0;
             int consecutiveMathChars = 0;
@@ -180,7 +163,7 @@ namespace NTDLS.ExpressionParser
                 }
                 else if (char.IsDigit(c))
                 {
-                    buffer.Clear();
+                    _buffer.Clear();
 
                     for (; i < expressionSpan.Length; i++)
                     {
@@ -188,7 +171,7 @@ namespace NTDLS.ExpressionParser
 
                         if (char.IsDigit(c) || c == '.')
                         {
-                            buffer.Append(c);
+                            _buffer.Append(c);
                         }
                         else
                         {
@@ -196,7 +179,7 @@ namespace NTDLS.ExpressionParser
                         }
                     }
 
-                    var strBuffer = buffer.ToString();
+                    var strBuffer = _buffer.ToString();
 
                     if (Utility.IsNumeric(strBuffer) == false)
                     {
@@ -211,7 +194,7 @@ namespace NTDLS.ExpressionParser
                     //Parse the variable/function name and determine which it is. If its a function,
                     //then we want to swap out the opening and closing parenthesizes with curly braces.
 
-                    buffer.Clear();
+                    _buffer.Clear();
                     bool isFunction = false;
 
                     for (; i < expressionSpan.Length; i++)
@@ -224,7 +207,7 @@ namespace NTDLS.ExpressionParser
                         }
                         else if (Utility.IsValidVariableChar(c))
                         {
-                            buffer.Append(c);
+                            _buffer.Append(c);
                         }
                         else if (c == '(')
                         {
@@ -237,7 +220,7 @@ namespace NTDLS.ExpressionParser
                         }
                     }
 
-                    var functionOrVariableName = buffer.ToString();
+                    var functionOrVariableName = _buffer.ToString();
 
                     if (isFunction)
                     {
@@ -245,7 +228,7 @@ namespace NTDLS.ExpressionParser
                         _operationCount++;
                         DiscoveredFunctions.Add(functionOrVariableName);
 
-                        buffer.Clear();
+                        _buffer.Clear();
 
                         //If its a function, then lets find the opening and closing parenthesizes and replace them with curly braces.
                         int functionScope = 0;
@@ -269,6 +252,7 @@ namespace NTDLS.ExpressionParser
 
                                 if (functionScope == 0)
                                 {
+                                    _buffer.Append(c);
                                     i++; //Consume the closing paren.
                                     break;
                                 }
@@ -278,7 +262,7 @@ namespace NTDLS.ExpressionParser
                                 _operationCount++;
                             }
 
-                            buffer.Append(c);
+                            _buffer.Append(c);
                         }
 
                         if (functionScope != 0)
@@ -286,7 +270,7 @@ namespace NTDLS.ExpressionParser
                             throw new Exception($"Parenthesizes mismatch when parsing function scope: {functionOrVariableName}");
                         }
 
-                        var functionParameterString = Sanitize(buffer.ToString());
+                        var functionParameterString = Sanitize(_buffer.ToString());
 
                         if (functionParameterString.StartsWith('(') == false || functionParameterString.EndsWith(')') == false)
                         {
@@ -349,14 +333,11 @@ namespace NTDLS.ExpressionParser
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void StorePreParsedCache(int slot, in PreParsedCacheItem value)
+        internal void StorePreParsedCache(int slot, PreParsedCacheItem value)
         {
             if (slot >= _preParsedCache.Length) //Resize the cache if needed.
             {
-                int newSize = _preParsedCache.Length * 2;
-                var newArray = new PreParsedCacheItem?[newSize];
-                Array.Copy(_preParsedCache, newArray, _preParsedCache.Length);
-                _preParsedCache = newArray;
+                Array.Resize(ref _preParsedCache, _preParsedCache.Length * 2);
             }
             _preParsedCache[slot] = value;
         }
@@ -378,10 +359,7 @@ namespace NTDLS.ExpressionParser
 
             if (cacheSlot >= _preComputedCache.Length) //Resize the cache if needed.
             {
-                int newSize = _preComputedCache.Length * 2;
-                var newArray = new PreComputedCacheItem[newSize];
-                Array.Copy(_preComputedCache, newArray, _preComputedCache.Length);
-                _preComputedCache = newArray;
+                Array.Resize(ref _preComputedCache, _preComputedCache.Length * 2);
             }
 
             _preComputedCache[cacheSlot] = new PreComputedCacheItem()
@@ -446,7 +424,7 @@ namespace NTDLS.ExpressionParser
         {
             ResetState();
 
-            StringBuilder work = new();
+            var work = new StringBuilder();
 
             work.AppendLine("{");
 
@@ -485,32 +463,17 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         /// <param name="expression">Mathematical expression in string form.</param>
         /// <param name="showWork">Output parameter for the operational explanation.</param>
-        public static double? Evaluate(string expression, out string showWork)
-            => new Expression(expression).Evaluate(out showWork);
+        /// <param name="options">Expression evaluation options.</param>
+        public static double? Evaluate(string expression, out string showWork, ExpressionOptions? options = null)
+            => new Expression(expression, options).Evaluate(out showWork);
 
         /// <summary>
         /// Evaluates a mathematical expression.
         /// </summary>
         /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="precision">Number of significant digits used in calculations.</param>
-        /// <param name="showWork">Output parameter for the operational explanation.</param>
-        public static double? Evaluate(string expression, int precision, out string showWork)
-            => new Expression(expression, precision).Evaluate(out showWork);
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="precision">Number of significant digits used in calculations.</param>
-        public static double? Evaluate(string expression, int precision)
-            => new Expression(expression, precision).Evaluate();
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        public static double? Evaluate(string expression)
-            => new Expression(expression).Evaluate();
+        /// <param name="options">Expression evaluation options.</param>
+        public static double? Evaluate(string expression, ExpressionOptions? options = null)
+            => new Expression(expression, options).Evaluate();
 
         #endregion
 
@@ -522,7 +485,8 @@ namespace NTDLS.ExpressionParser
         /// <param name="expression">Mathematical expression in string form.</param>
         /// <param name="showWork">Output parameter for the operational explanation.</param>
         /// <param name="outResultWasNull">Is true when the result was NULL.</param>
-        public static double EvaluateNotNull(string expression, out string showWork, out bool outResultWasNull)
+        /// <param name="options">Expression evaluation options.</param>
+        public static double EvaluateNotNull(string expression, out string showWork, out bool outResultWasNull, ExpressionOptions? options = null)
         {
             var result = new Expression(expression).Evaluate(out showWork);
             outResultWasNull = result == null;
@@ -533,35 +497,9 @@ namespace NTDLS.ExpressionParser
         /// Evaluates a mathematical expression.
         /// </summary>
         /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="precision">Number of significant digits used in calculations.</param>
-        /// <param name="showWork">Output parameter for the operational explanation.</param>
         /// <param name="outResultWasNull">Is true when the result was NULL.</param>
-        public static double EvaluateNotNull(string expression, int precision, out string showWork, out bool outResultWasNull)
-        {
-            var result = new Expression(expression, precision).Evaluate(out showWork);
-            outResultWasNull = result == null;
-            return result ?? 0;
-        }
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="precision">Number of significant digits used in calculations.</param>
-        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
-        public static double EvaluateNotNull(string expression, int precision, out bool outResultWasNull)
-        {
-            var result = new Expression(expression, precision).Evaluate();
-            outResultWasNull = result == null;
-            return result ?? 0;
-        }
-
-        /// <summary>
-        /// Evaluates a mathematical expression.
-        /// </summary>
-        /// <param name="expression">Mathematical expression in string form.</param>
-        /// <param name="outResultWasNull">Is true when the result was NULL.</param>
-        public static double EvaluateNotNull(string expression, out bool outResultWasNull)
+        /// <param name="options">Expression evaluation options.</param>
+        public static double EvaluateNotNull(string expression, out bool outResultWasNull, ExpressionOptions? options = null)
         {
             var result = new Expression(expression).Evaluate();
             outResultWasNull = result == null;
@@ -572,7 +510,8 @@ namespace NTDLS.ExpressionParser
         /// Evaluates a mathematical expression.
         /// </summary>
         /// <param name="expression">Mathematical expression in string form.</param>
-        public static double EvaluateNotNull(string expression)
+        /// <param name="options">Expression evaluation options.</param>
+        public static double EvaluateNotNull(string expression, ExpressionOptions? options = null)
              => new Expression(expression).Evaluate() ?? 0;
 
         #endregion
@@ -697,11 +636,11 @@ namespace NTDLS.ExpressionParser
 
         internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
         {
-            _replaceRangeBuilder.Clear();
-            _replaceRangeBuilder.Append(original.AsSpan(0, startIndex));
-            _replaceRangeBuilder.Append(replacement);
-            _replaceRangeBuilder.Append(original.AsSpan(endIndex + 1));
-            return _replaceRangeBuilder.ToString();
+            _buffer.Clear();
+            _buffer.Append(original.AsSpan(0, startIndex));
+            _buffer.Append(replacement);
+            _buffer.Append(original.AsSpan(endIndex + 1));
+            return _buffer.ToString();
         }
 
         /// <summary>
@@ -723,8 +662,9 @@ namespace NTDLS.ExpressionParser
                 for (; i < WorkingText.Length; i++)
                 {
                     char c = WorkingText[i];
-                    if (char.IsWhiteSpace(c))
-                        continue;
+
+                    //if (char.IsWhiteSpace(c)) //Sanitization step should have already removed whitespace.
+                    //    continue;
 
                     if (c == '(')
                     {
@@ -777,48 +717,53 @@ namespace NTDLS.ExpressionParser
                 return GetPreComputedCacheItem(span[1..^1]).ComputedValue;
             }
 
-            double result = 0.0;
-            int length = span.Length;
-            int i = 0;
-            double fraction;
-            double multiplier;
-            bool isNegative = false;
-
-            if (length > 0 && (span[0] == '-' || span[0] == '+'))
+            if (Options.UseFastFloatingPointParser)
             {
-                isNegative = span[0] == '-';
-                i++; //Skip the explicit sign.
-            }
+                double result = 0.0;
+                int length = span.Length;
+                int i = 0;
+                double fraction;
+                double multiplier;
+                bool isNegative = false;
 
-            for (; i < length; i++)
-            {
-                if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
+                if (length > 0 && (span[0] == '-' || span[0] == '+'))
                 {
-                    result = result * 10.0 + (span[i] - '0');
+                    isNegative = span[0] == '-';
+                    i++; //Skip the explicit sign.
                 }
-                else if (span[i] == '.')
+
+                for (; i < length; i++)
                 {
-                    i++; //Skip the decimal point.
-
-                    fraction = 0.0;
-                    multiplier = 1.0;
-
-                    for (; i < length; i++)
+                    if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
                     {
-                        if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
-                        {
-                            fraction = fraction * 10.0 + (span[i] - '0');
-                            multiplier *= 0.1;
-                        }
-                        else throw new FormatException("Invalid character in input string.");
+                        result = result * 10.0 + (span[i] - '0');
                     }
+                    else if (span[i] == '.')
+                    {
+                        i++; //Skip the decimal point.
 
-                    result += fraction * multiplier;
+                        fraction = 0.0;
+                        multiplier = 1.0;
+
+                        for (; i < length; i++)
+                        {
+                            if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
+                            {
+                                fraction = fraction * 10.0 + (span[i] - '0');
+                                multiplier *= 0.1;
+                            }
+                            else throw new FormatException("Invalid character in input string.");
+                        }
+
+                        result += fraction * multiplier;
+                    }
+                    else throw new FormatException("Invalid character in input string.");
                 }
-                else throw new FormatException("Invalid character in input string.");
+
+                return isNegative ? -result : result;
             }
 
-            return isNegative ? -result : result;
+            return double.Parse(span, CultureInfo.InvariantCulture);
         }
     }
 }

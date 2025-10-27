@@ -265,23 +265,6 @@ namespace NTDLS.ExpressionParser
                 "trunc" => parameters.Length == 1 ? Math.Truncate(parameters[0]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
                 _ => throw new Exception($"Undefined native function: {functionName}"),
             };
-
-
-            return functionName switch
-            {
-
-                _ => throw new Exception($"Undefined native function: {functionName}")
-            };
-
-
-        }
-
-        public static int StringToInt(ReadOnlySpan<char> span)
-        {
-            int value = 0;
-            for (int i = 0; i < span.Length; i++)
-                value = value * 10 + (span[i] - '0');
-            return value;
         }
     }
 }
