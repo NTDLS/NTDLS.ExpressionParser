@@ -4,7 +4,9 @@
 
 ExpressionParser is a mathematics parsing engine for .net. It supports expression nesting, custom variables, custom functions all standard mathematical operations for integer, decimal (floating point), logic and bitwise.
 
-It addition to the custom functions and variables, these are built in: ACOS, ASIN, ATAN, ATAN2, LDEXP, SINH, COSH, TANH, LOG, LOG10, EXP, MODPOW, SQRT, POW, FLOOR, CEIL, NOT, AVG, SUM, TAN, ATAN, SIN, COS, ABS.
+It addition to the custom functions and variables, these are built in: ACOS, ASIN, ATAN, ATAN2, LDEXP, SINH, COSH, TANH, LOG, LOG10, EXP, MODPOW, SQRT, POW, FLOOR, CEIL, NOT, AVG, SUM, TAN, ATAN, SIN, COS, ABS, and many more!
+
+[![Regression Tests](https://github.com/NTDLS/NTDLS.ExpressionParser/actions/workflows/Regression%20Tests.yml/badge.svg)](https://github.com/NTDLS/NTDLS.ExpressionParser/actions/workflows/Regression%20Tests.yml)
 
 👀 If you came for the C++ version you can find it at: https://github.com/NTDLS/CMathParser
 
