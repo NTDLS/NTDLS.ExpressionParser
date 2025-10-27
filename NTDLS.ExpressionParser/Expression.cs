@@ -39,7 +39,7 @@ namespace NTDLS.ExpressionParser
         internal HashSet<string> DiscoveredVariables { get; private set; } = new();
         internal HashSet<string> DiscoveredFunctions { get; private set; } = new();
         internal Dictionary<string, CustomFunction> CustomFunctions { get; private set; } = new();
-        internal double?[] PreComputedCache { get; private set; }
+        internal PreComputedCacheItem[] PreComputedCache { get; private set; }
 
         internal string ConsumeNextPreComputedCacheKey(out int cacheIndex)
         {
@@ -47,7 +47,7 @@ namespace NTDLS.ExpressionParser
             return $"${cacheIndex}$";
         }
 
-        internal double? CachedValue(ReadOnlySpan<char> span)
+        internal PreComputedCacheItem GetPreComputedCacheItem(ReadOnlySpan<char> span)
         {
             switch (span.Length)
             {
@@ -71,7 +71,7 @@ namespace NTDLS.ExpressionParser
 
             _originalNextPreComputedCacheKey = _nextPreComputedCacheKey;
 
-            PreComputedCache = new double?[_operationCount];
+            PreComputedCache = new PreComputedCacheItem[_operationCount];
 
             ExpressionHash = HashCombine(
                 XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(Text)),
@@ -96,7 +96,7 @@ namespace NTDLS.ExpressionParser
 
             _originalNextPreComputedCacheKey = _nextPreComputedCacheKey;
 
-            PreComputedCache = new double?[_operationCount];
+            PreComputedCache = new PreComputedCacheItem[_operationCount];
 
             ExpressionHash = HashCombine(
                 XxHash64.HashToUInt64(Encoding.UTF8.GetBytes(Text)),
@@ -118,12 +118,11 @@ namespace NTDLS.ExpressionParser
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool TryGetPreParsed(int slot, [NotNullWhen(true)] out PreParsedCacheItem value)
+        internal bool TryGetPreParsedCache(int slot, [NotNullWhen(true)] out PreParsedCacheItem value)
         {
-            var local = _preParsedCache;
-            if ((uint)slot < (uint)local.Length)
+            if (slot < _preParsedCache.Length)
             {
-                var cached = local[slot];
+                var cached = _preParsedCache[slot];
                 if (cached != null)
                 {
                     value = cached.Value;
@@ -135,30 +134,16 @@ namespace NTDLS.ExpressionParser
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void SetPreParsed(int slot, in PreParsedCacheItem value)
+        internal void SetPreParsedCache(int slot, in PreParsedCacheItem value)
         {
-            var local = _preParsedCache;
-            if ((uint)slot >= (uint)local.Length)
+            if (slot >= _preParsedCache.Length)
             {
-                Resize(slot + 1);
-                local = _preParsedCache;
+                int newSize = _preParsedCache.Length * 2;
+                var newArray = new PreParsedCacheItem?[newSize];
+                Array.Copy(_preParsedCache, newArray, _preParsedCache.Length);
+                _preParsedCache = newArray;
             }
-            local[slot] = value;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void Resize(int requiredSize)
-        {
-            var current = _preParsedCache;
-            int newSize = current.Length;
-            while (newSize <= requiredSize)
-                newSize <<= 1; // grow exponentially
-
-            var newArray = new PreParsedCacheItem?[newSize];
-            Array.Copy(current, newArray, current.Length);
-
-            // Atomic publish, readers always see a valid array
-            Interlocked.Exchange(ref _preParsedCache, newArray);
+            _preParsedCache[slot] = value;
         }
 
         /// <summary>
@@ -320,7 +305,7 @@ namespace NTDLS.ExpressionParser
                 if (begIndex >= 0 && endIndex > begIndex)
                 {
                     var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
-                    copy = copy.Replace($"${cacheKey}$", CachedValue(cacheKey)?.ToString(PrecisionFormat) ?? "null");
+                    copy = copy.Replace($"${cacheKey}$", GetPreComputedCacheItem(cacheKey).ComputedValue?.ToString(PrecisionFormat) ?? "null");
                 }
                 else
                 {
@@ -351,7 +336,7 @@ namespace NTDLS.ExpressionParser
 
             if (WorkingText[0] == '$')
             {
-                return CachedValue(WorkingText.AsSpan()[1..^1]);
+                return GetPreComputedCacheItem(WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
             return StringToDouble(WorkingText);
@@ -393,7 +378,7 @@ namespace NTDLS.ExpressionParser
             if (WorkingText[0] == '$')
             {
                 showWork = work.ToString();
-                return CachedValue(WorkingText.AsSpan()[1..^1]);
+                return GetPreComputedCacheItem(WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
             showWork = work.ToString();
@@ -403,15 +388,22 @@ namespace NTDLS.ExpressionParser
         internal void ResetState()
         {
             NextPreParsedCacheKey = 0;
-            _nextPreComputedCacheKey = _originalNextPreComputedCacheKey; //To account for the NULL replacements during sanitization.
             WorkingText = Text; //Start with a pre-sanitized/validated copy of the supplied expression text.
+
+            _nextPreComputedCacheKey = _originalNextPreComputedCacheKey; //To account for the NULL replacements during sanitization.
 
             //Swap out all of the user supplied parameters.
             foreach (var variable in DiscoveredVariables.OrderByDescending(o => o.Length))
             {
                 if (_definedParameters.TryGetValue(variable, out var value))
                 {
-                    WorkingText = WorkingText.Replace(variable, value?.ToString(PrecisionFormat));
+                    var cacheKey = ConsumeNextPreComputedCacheKey(out int cacheIndex);
+                    PreComputedCache[cacheIndex] = new PreComputedCacheItem()
+                    {
+                        ComputedValue = value,
+                        IsVariable = true
+                    };
+                    WorkingText = WorkingText.Replace(variable, cacheKey);
                 }
                 else
                 {
@@ -428,7 +420,7 @@ namespace NTDLS.ExpressionParser
             }
             if (exp[0] == '$')
             {
-                return CachedValue(exp.AsSpan()[1..^1]);
+                return GetPreComputedCacheItem(exp.AsSpan()[1..^1]).ComputedValue;
             }
             return StringToDouble(exp);
         }
@@ -759,7 +751,7 @@ namespace NTDLS.ExpressionParser
             }
             if (span[0] == '$')
             {
-                return CachedValue(span[1..^1]);
+                return GetPreComputedCacheItem(span[1..^1]).ComputedValue;
             }
 
             double result = 0.0;

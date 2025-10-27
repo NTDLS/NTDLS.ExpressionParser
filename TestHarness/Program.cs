@@ -22,7 +22,15 @@ namespace TestHarness
             Console.WriteLine(work);
             */
 
-            EvalPrint("2 * sum(1,null,3)");
+            var expression = new Expression("10 * 5 * extra");
+
+            expression.SetParameter("extra", 1000);
+            Console.WriteLine(expression.Evaluate());
+
+            expression.SetParameter("extra", 2000);
+            Console.WriteLine(expression.Evaluate());
+
+            //EvalPrint("2 * sum(1,null,3)");
             //EvalPrint("1 + (2 + 3)");
             //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
 
