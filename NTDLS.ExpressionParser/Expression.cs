@@ -28,6 +28,7 @@ namespace NTDLS.ExpressionParser
         public delegate double? ExpressionFunction(double[] parameters);
 
         internal Sanitized _sanitized;
+        internal ExpressionState _templateState;
 
         private readonly string _text = string.Empty;
         private readonly string _precisionFormat;
@@ -46,22 +47,25 @@ namespace NTDLS.ExpressionParser
             Options = options ?? new ExpressionOptions();
             _precisionFormat = $"G{Options.Precision}";
 
-            Utility.PersistentCaches.GetOrCreate(Options.GetHashCode(), () =>
+            var expressionHash = HashCode.Combine(text, Options);
+
+            var cached = Utility.PersistentCaches.GetOrCreate(expressionHash, entry =>
             {
-                var defaultState = new ExpressionState(string.Empty, Options);
-                return new CachedState(new Sanitized(string.Empty), defaultState);
-            });
+                entry.SlidingExpiration = TimeSpan.FromMinutes(5);
 
-            _sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
+                var sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
+                var templateState = new ExpressionState(sanitized, Options);
 
-            var templateState = new ExpressionState(_sanitized, Options);
-            var state = templateState.Clone();
+                var cached = new CachedState(sanitized, templateState);
 
+                return cached;
+            }) ?? throw new Exception("Failed to create persistent cache.");
 
+            _sanitized = cached.Sanitized;
+            _templateState = cached.State;
         }
 
         #endregion
-
 
         #region Evaluate.
 
@@ -70,9 +74,7 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         public double? Evaluate()
         {
-            var templateState = new ExpressionState(_sanitized, Options);
-            var state = templateState.Clone();
-
+            var state = _templateState.Clone();
             state.ApplyParameters(_sanitized, _definedParameters);
 
             bool isComplete;
@@ -101,9 +103,7 @@ namespace NTDLS.ExpressionParser
         /// <returns></returns>
         public double? Evaluate(out string showWork)
         {
-            var templateState = new ExpressionState(_sanitized, Options);
-            var state = templateState.Clone();
-
+            var state = _templateState.Clone();
             state.ApplyParameters(_sanitized, _definedParameters);
 
             var work = new StringBuilder();

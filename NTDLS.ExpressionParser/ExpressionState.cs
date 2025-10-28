@@ -143,7 +143,7 @@ namespace NTDLS.ExpressionParser
         }
 
         public void ApplyParameters(Sanitized sanitized, Dictionary<string, double?> definedParameters)
-        { 
+        {
             //Swap out all of the user supplied parameters.
             foreach (var variable in sanitized.DiscoveredVariables.OrderByDescending(o => o.Length))
             {
