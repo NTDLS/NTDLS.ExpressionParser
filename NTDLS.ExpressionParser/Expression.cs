@@ -63,6 +63,7 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         public double? Evaluate()
         {
+            State.Reset(Sanitized);
             State.ApplyParameters(Sanitized, _definedParameters);
 
             bool isComplete;

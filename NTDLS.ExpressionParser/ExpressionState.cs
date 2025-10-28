@@ -121,6 +121,12 @@ namespace NTDLS.ExpressionParser
 
         #endregion
 
+        public void Reset(Sanitized sanitized)
+        {
+            _nextPreComputedCacheSlot = sanitized.ConsumedPreComputedCacheSlots;
+            _nextPreParsedCacheSlot = 0;
+        }
+
         public ExpressionState Clone()
         {
             var clone = new ExpressionState(_options)
@@ -130,7 +136,7 @@ namespace NTDLS.ExpressionParser
                 _nextPreComputedCacheSlot = _nextPreComputedCacheSlot,
                 _preComputedCache = new PreComputedCacheItem[_preComputedCache.Length],
                 _preParsedCache = new PreParsedCacheItem?[_preParsedCache.Length],
-                _nextPreParsedCacheSlot = _nextPreParsedCacheSlot
+                _nextPreParsedCacheSlot = 0
             };
 
             Array.Copy(_preComputedCache, clone._preComputedCache, _preComputedCache.Length); //Copy any pre-computed NULLs.
