@@ -5,35 +5,16 @@ using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
-    internal class CachedState
-    {
-        public Sanitized Sanitized { get; set; }
-        public ExpressionState State { get; set; }
-
-        public CachedState(Sanitized sanitized, ExpressionState state)
-        {
-            Sanitized = sanitized;
-            State = state;
-        }
-    }
-
     /// <summary>
     /// Represents a mathematical expression.
     /// </summary>
     public class Expression
     {
-        /// <summary>
-        /// Delegate for calling a custom function.
-        /// </summary>
-        public delegate double? ExpressionFunction(double[] parameters);
-
-        internal Sanitized _sanitized;
-        internal ExpressionState _templateState;
-
-        private readonly string _text = string.Empty;
         private readonly string _precisionFormat;
         private readonly Dictionary<string, double?> _definedParameters = new();
 
+        internal Sanitized Sanitized { get; set; }
+        internal ExpressionState State { get; set; }
         internal ExpressionOptions Options { get; set; }
         internal Dictionary<string, ExpressionFunction> ExpressionFunctions { get; private set; } = new();
 
@@ -47,22 +28,30 @@ namespace NTDLS.ExpressionParser
             Options = options ?? new ExpressionOptions();
             _precisionFormat = $"G{Options.Precision}";
 
-            var expressionHash = HashCode.Combine(text, Options);
-
-            var cached = Utility.PersistentCaches.GetOrCreate(expressionHash, entry =>
+            if (Options.UseCompileCache)
             {
-                entry.SlidingExpiration = TimeSpan.FromMinutes(5);
+                var expressionHash = HashCode.Combine(text, Options);
 
-                var sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
-                var templateState = new ExpressionState(sanitized, Options);
+                var cached = Utility.PersistentCaches.GetOrCreate(expressionHash, entry =>
+                {
+                    entry.SlidingExpiration = TimeSpan.FromMinutes(5);
 
-                var cached = new CachedState(sanitized, templateState);
+                    var sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
+                    var state = new ExpressionState(sanitized, Options);
 
-                return cached;
-            }) ?? throw new Exception("Failed to create persistent cache.");
+                    var cached = new CachedState(sanitized, state);
 
-            _sanitized = cached.Sanitized;
-            _templateState = cached.State;
+                    return cached;
+                }) ?? throw new Exception("Failed to create persistent cache.");
+
+                Sanitized = cached.Sanitized;
+                State = cached.State.Clone();
+            }
+            else
+            {
+                Sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
+                State = new ExpressionState(Sanitized, Options);
+            }
         }
 
         #endregion
@@ -74,26 +63,25 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         public double? Evaluate()
         {
-            var state = _templateState.Clone();
-            state.ApplyParameters(_sanitized, _definedParameters);
+            State.ApplyParameters(Sanitized, _definedParameters);
 
             bool isComplete;
             do
             {
                 //Get a sub-expression from the whole expression.
-                isComplete = AcquireSubexpression(state, out int startIndex, out int endIndex, out var subExpression);
+                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
                 //Compute the sub-expression.
                 var resultString = subExpression.Compute();
                 //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
-                state.WorkingText = ReplaceRange(state, state.WorkingText, startIndex, endIndex, resultString);
+                State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
 
-            if (state.WorkingText[0] == '$')
+            if (State.WorkingText[0] == '$')
             {
-                return state.GetPreComputedCacheItem(state.WorkingText.AsSpan()[1..^1]).ComputedValue;
+                return State.GetPreComputedCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
-            return StringToDouble(state, state.WorkingText);
+            return StringToDouble(State.WorkingText);
         }
 
         /// <summary>
@@ -103,8 +91,7 @@ namespace NTDLS.ExpressionParser
         /// <returns></returns>
         public double? Evaluate(out string showWork)
         {
-            var state = _templateState.Clone();
-            state.ApplyParameters(_sanitized, _definedParameters);
+            State.ApplyParameters(Sanitized, _definedParameters);
 
             var work = new StringBuilder();
 
@@ -114,30 +101,30 @@ namespace NTDLS.ExpressionParser
             do
             {
                 //Get a sub-expression from the whole expression.
-                isComplete = AcquireSubexpression(state, out int startIndex, out int endIndex, out var subExpression);
+                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
 
-                string friendlySubExpression = SwapInCacheValues(state, subExpression.Text);
+                string friendlySubExpression = SwapInCacheValues(subExpression.Text);
                 work.Append("    " + friendlySubExpression);
 
                 //Compute the sub-expression.
                 var resultString = subExpression.Compute();
 
-                work.AppendLine($" = {SwapInCacheValues(state, resultString)}");
+                work.AppendLine($" = {SwapInCacheValues(resultString)}");
 
                 //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
-                state.WorkingText = ReplaceRange(state, state.WorkingText, startIndex, endIndex, resultString);
+                State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
 
-            work.AppendLine($"}} = {SwapInCacheValues(state, state.WorkingText)}");
+            work.AppendLine($"}} = {SwapInCacheValues(State.WorkingText)}");
 
-            if (state.WorkingText[0] == '$')
+            if (State.WorkingText[0] == '$')
             {
                 showWork = work.ToString();
-                return state.GetPreComputedCacheItem(state.WorkingText.AsSpan()[1..^1]).ComputedValue;
+                return State.GetPreComputedCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
             showWork = work.ToString();
-            return StringToDouble(state, state.WorkingText);
+            return StringToDouble(State.WorkingText);
         }
 
         /// <summary>
@@ -262,7 +249,7 @@ namespace NTDLS.ExpressionParser
         /// Replaces placeholders in the input text with their corresponding precomputed cache values.
         /// This function is only used when showing work, so performance is not critical.
         /// </summary>
-        private string SwapInCacheValues(ExpressionState state, string text)
+        private string SwapInCacheValues(string text)
         {
             var copy = new string(text);
 
@@ -274,7 +261,7 @@ namespace NTDLS.ExpressionParser
                 if (begIndex >= 0 && endIndex > begIndex)
                 {
                     var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
-                    copy = copy.Replace($"${cacheKey}$", state.GetPreComputedCacheItem(cacheKey).ComputedValue?.ToString(_precisionFormat) ?? "null");
+                    copy = copy.Replace($"${cacheKey}$", State.GetPreComputedCacheItem(cacheKey).ComputedValue?.ToString(_precisionFormat) ?? "null");
                 }
                 else
                 {
@@ -285,13 +272,13 @@ namespace NTDLS.ExpressionParser
             return copy;
         }
 
-        internal string ReplaceRange(ExpressionState state, string original, int startIndex, int endIndex, string replacement)
+        internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
         {
-            state._buffer.Clear();
-            state._buffer.Append(original.AsSpan(0, startIndex));
-            state._buffer.Append(replacement);
-            state._buffer.Append(original.AsSpan(endIndex + 1));
-            return state._buffer.ToString();
+            State.Buffer.Clear();
+            State.Buffer.Append(original.AsSpan(0, startIndex));
+            State.Buffer.Append(replacement);
+            State.Buffer.Append(original.AsSpan(endIndex + 1));
+            return State.Buffer.ToString();
         }
 
         /// <summary>
@@ -299,9 +286,9 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool AcquireSubexpression(ExpressionState state, out int outStartIndex, out int outEndIndex, out SubExpression outSubExpression)
+        internal bool AcquireSubexpression(out int outStartIndex, out int outEndIndex, out SubExpression outSubExpression)
         {
-            int lastParenIndex = state.WorkingText.LastIndexOf('(');
+            int lastParenIndex = State.WorkingText.LastIndexOf('(');
 
             if (lastParenIndex >= 0)
             {
@@ -310,9 +297,9 @@ namespace NTDLS.ExpressionParser
                 int scope = 0;
                 int i = lastParenIndex;
 
-                for (; i < state.WorkingText.Length; i++)
+                for (; i < State.WorkingText.Length; i++)
                 {
-                    char c = state.WorkingText[i];
+                    char c = State.WorkingText[i];
 
                     //if (char.IsWhiteSpace(c)) //Sanitization step should have already removed whitespace.
                     //    continue;
@@ -334,19 +321,19 @@ namespace NTDLS.ExpressionParser
 
                 outEndIndex = i;
 
-                var subExprSpan = state.WorkingText.AsSpan(outStartIndex, outEndIndex - outStartIndex + 1);
+                var subExprSpan = State.WorkingText.AsSpan(outStartIndex, outEndIndex - outStartIndex + 1);
 
                 if (subExprSpan[0] != '(' || subExprSpan[^1] != ')')
                     throw new Exception("Sub-expression should be enclosed in parentheses.");
 
-                outSubExpression = new SubExpression(this, state, subExprSpan.ToString());
+                outSubExpression = new SubExpression(this, subExprSpan.ToString());
                 return false;
             }
             else
             {
                 outStartIndex = 0;
-                outEndIndex = state.WorkingText.Length - 1;
-                outSubExpression = new SubExpression(this, state, state.WorkingText);
+                outEndIndex = State.WorkingText.Length - 1;
+                outSubExpression = new SubExpression(this, State.WorkingText);
                 return true;
             }
         }
@@ -354,7 +341,7 @@ namespace NTDLS.ExpressionParser
         /// <summary>
         /// Converts a string or value of a stored cache key into a double.
         /// </summary>
-        internal double? StringToDouble(ExpressionState state, ReadOnlySpan<char> span)
+        internal double? StringToDouble(ReadOnlySpan<char> span)
         {
             if (span.Length == 0)
             {
@@ -362,7 +349,7 @@ namespace NTDLS.ExpressionParser
             }
             else if (span[0] == '$')
             {
-                return state.GetPreComputedCacheItem(span[1..^1]).ComputedValue;
+                return State.GetPreComputedCacheItem(span[1..^1]).ComputedValue;
             }
 
             if (Options.UseFastFloatingPointParser)

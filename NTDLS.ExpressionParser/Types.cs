@@ -1,5 +1,10 @@
 ﻿namespace NTDLS.ExpressionParser
 {
+    /// <summary>
+    /// Delegate for calling a custom function.
+    /// </summary>
+    public delegate double? ExpressionFunction(double[] parameters);
+
     internal struct PreParsedCacheItem
     {
         public double? ParsedValue;

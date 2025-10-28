@@ -7,21 +7,18 @@ namespace NTDLS.ExpressionParser
     internal class ExpressionState
     {
         public string WorkingText { get; set; } = string.Empty;
+        public readonly StringBuilder Buffer = new();
 
-        public readonly StringBuilder _buffer = new();
-
-        public int _nextPreParsedCacheSlot = 0;
-        public PreComputedCacheItem[] _preComputedCache = [];
-
-        public int _nextPreComputedCacheSlot = 0;
-        public int _operationCount = 0;
-        public PreParsedCacheItem?[] _preParsedCache = [];
-
-        public ExpressionOptions Options;
+        private int _nextPreParsedCacheSlot = 0;
+        private PreComputedCacheItem[] _preComputedCache = [];
+        private int _nextPreComputedCacheSlot = 0;
+        private int _operationCount = 0;
+        private PreParsedCacheItem?[] _preParsedCache = [];
+        private readonly ExpressionOptions _options;
 
         public ExpressionState(Sanitized sanitized, ExpressionOptions options)
         {
-            Options = options;
+            _options = options;
 
             WorkingText = sanitized.Text;
             _operationCount = sanitized.OperationCount;
@@ -34,7 +31,7 @@ namespace NTDLS.ExpressionParser
             {
                 _preComputedCache[i] = new PreComputedCacheItem()
                 {
-                    ComputedValue = Options.DefaultNullValue,
+                    ComputedValue = options.DefaultNullValue,
                     IsVariable = false,
                     IsNullValue = true
                 };
@@ -43,7 +40,7 @@ namespace NTDLS.ExpressionParser
 
         public ExpressionState(ExpressionOptions options)
         {
-            Options = options;
+            _options = options;
         }
 
         #region Pre-Parsed Cache Management.
@@ -126,7 +123,7 @@ namespace NTDLS.ExpressionParser
 
         public ExpressionState Clone()
         {
-            var clone = new ExpressionState(Options)
+            var clone = new ExpressionState(_options)
             {
                 WorkingText = WorkingText,
                 _operationCount = _operationCount,
@@ -136,7 +133,7 @@ namespace NTDLS.ExpressionParser
                 _nextPreParsedCacheSlot = _nextPreParsedCacheSlot
             };
 
-            Array.Copy(_preComputedCache, clone._preComputedCache, _preComputedCache.Length);
+            Array.Copy(_preComputedCache, clone._preComputedCache, _preComputedCache.Length); //Copy any pre-computed NULLs.
             //Array.Copy(_preParsedCache, clone._preParsedCache, _preParsedCache.Length);
 
             return clone;
@@ -152,7 +149,7 @@ namespace NTDLS.ExpressionParser
                     var cacheSlot = ConsumeNextPreComputedCacheSlot(out var cacheKey);
                     _preComputedCache[cacheSlot] = new PreComputedCacheItem()
                     {
-                        ComputedValue = value ?? Options.DefaultNullValue,
+                        ComputedValue = value ?? _options.DefaultNullValue,
                         IsVariable = true
                     };
                     WorkingText = WorkingText.Replace(variable, cacheKey);

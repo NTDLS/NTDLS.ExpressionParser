@@ -14,11 +14,11 @@ namespace TestHarness
 
         static void Main()
         {
-            EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
-            EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
-            EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
-            EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
-            EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
+            //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
+            //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
+            //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
+            //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
+            //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
 
             /*
             EvalPrint("10 * 10");
@@ -105,12 +105,14 @@ namespace TestHarness
 
             var expression = new Expression(expr);
 
-            expression.Evaluate(); // Warm-up
-
             var stopwatch = Stopwatch.StartNew();
             for (int i = 0; i < iterations; i++)
             {
-                expression.Evaluate(); //Typically takes ~0.9µs.
+                if (expression.Evaluate() != 6140750)//Typically takes ~0.9µs.
+                {
+                    throw new Exception("Unexpected result");
+                }
+
             }
             stopwatch.Stop();
 

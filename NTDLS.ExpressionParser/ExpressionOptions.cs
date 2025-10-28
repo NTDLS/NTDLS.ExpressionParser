@@ -6,6 +6,11 @@
     public class ExpressionOptions
     {
         /// <summary>
+        /// Gets or sets a value indicating whether or not to cache and reuse the sanitized expression and state.
+        /// </summary>
+        public bool UseCompileCache { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets a value indicating whether to use the fast floating-point parser.
         /// </summary>
         public bool UseFastFloatingPointParser { get; set; } = true;
@@ -26,6 +31,7 @@
         public override int GetHashCode()
         {
             int hash = 17;
+            hash = hash * 31 + UseCompileCache.GetHashCode();
             hash = hash * 31 + UseFastFloatingPointParser.GetHashCode();
             hash = hash * 31 + Precision.GetHashCode();
             hash = hash * 31 + (DefaultNullValue.HasValue ? 1 : 2);

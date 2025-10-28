@@ -24,3 +24,4 @@ Best: 118.41, Worst: 265.89, Avg: 131.71, StdDev: 31.11
 Best: 104.69, Worst: 263.81, Avg: 120.02, StdDev: 33.66 (AcquireSubexpression)
 Best: 100.79, Worst: 266.61, Avg: 113.77, StdDev: 35.28
 Best: 95.37, Worst: 304.77, Avg: 109.35, StdDev: 44.94
+Best: 17.60, Worst: 106.12, Avg: 23.09, StdDev: 19.09 (new state cache)
