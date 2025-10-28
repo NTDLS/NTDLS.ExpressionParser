@@ -1,9 +1,22 @@
-﻿using System.Globalization;
+﻿using Microsoft.Extensions.Caching.Memory;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
+    internal class CachedState
+    {
+        public Sanitized Sanitized { get; set; }
+        public ExpressionState State { get; set; }
+
+        public CachedState(Sanitized sanitized, ExpressionState state)
+        {
+            Sanitized = sanitized;
+            State = state;
+        }
+    }
+
     /// <summary>
     /// Represents a mathematical expression.
     /// </summary>
@@ -32,7 +45,19 @@ namespace NTDLS.ExpressionParser
         {
             Options = options ?? new ExpressionOptions();
             _precisionFormat = $"G{Options.Precision}";
+
+            Utility.PersistentCaches.GetOrCreate(Options.GetHashCode(), () =>
+            {
+                var defaultState = new ExpressionState(string.Empty, Options);
+                return new CachedState(new Sanitized(string.Empty), defaultState);
+            });
+
             _sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
+
+            var templateState = new ExpressionState(_sanitized, Options);
+            var state = templateState.Clone();
+
+
         }
 
         #endregion
@@ -45,36 +70,10 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         public double? Evaluate()
         {
-            var state = new ExpressionState(_sanitized, Options);
+            var templateState = new ExpressionState(_sanitized, Options);
+            var state = templateState.Clone();
 
-            for (int i = 0; i < _sanitized.ConsumedPreComputedCacheSlots; i++)
-            {
-                state._preComputedCache[i] = new PreComputedCacheItem()
-                {
-                    ComputedValue = Options.DefaultNullValue,
-                    IsVariable = false,
-                    IsNullValue = true
-                };
-            }
-
-            //Swap out all of the user supplied parameters.
-            foreach (var variable in _sanitized.DiscoveredVariables.OrderByDescending(o => o.Length))
-            {
-                if (_definedParameters.TryGetValue(variable, out var value))
-                {
-                    var cacheSlot = state.ConsumeNextPreComputedCacheSlot(out var cacheKey);
-                    state._preComputedCache[cacheSlot] = new PreComputedCacheItem()
-                    {
-                        ComputedValue = value ?? Options.DefaultNullValue,
-                        IsVariable = true
-                    };
-                    state.WorkingText = state.WorkingText.Replace(variable, cacheKey);
-                }
-                else
-                {
-                    throw new Exception($"Undefined variable: {variable}");
-                }
-            }
+            state.ApplyParameters(_sanitized, _definedParameters);
 
             bool isComplete;
             do
@@ -102,36 +101,10 @@ namespace NTDLS.ExpressionParser
         /// <returns></returns>
         public double? Evaluate(out string showWork)
         {
-            var state = new ExpressionState(_sanitized, Options);
+            var templateState = new ExpressionState(_sanitized, Options);
+            var state = templateState.Clone();
 
-            for (int i = 0; i < _sanitized.ConsumedPreComputedCacheSlots; i++)
-            {
-                state._preComputedCache[i] = new PreComputedCacheItem()
-                {
-                    ComputedValue = Options.DefaultNullValue,
-                    IsVariable = false,
-                    IsNullValue = true
-                };
-            }
-
-            //Swap out all of the user supplied parameters.
-            foreach (var variable in _sanitized.DiscoveredVariables.OrderByDescending(o => o.Length))
-            {
-                if (_definedParameters.TryGetValue(variable, out var value))
-                {
-                    var cacheSlot = state.ConsumeNextPreComputedCacheSlot(out var cacheKey);
-                    state._preComputedCache[cacheSlot] = new PreComputedCacheItem()
-                    {
-                        ComputedValue = value ?? Options.DefaultNullValue,
-                        IsVariable = true
-                    };
-                    state.WorkingText = state.WorkingText.Replace(variable, cacheKey);
-                }
-                else
-                {
-                    throw new Exception($"Undefined variable: {variable}");
-                }
-            }
+            state.ApplyParameters(_sanitized, _definedParameters);
 
             var work = new StringBuilder();
 
@@ -381,9 +354,6 @@ namespace NTDLS.ExpressionParser
         /// <summary>
         /// Converts a string or value of a stored cache key into a double.
         /// </summary>
-        /// <param name="span"></param>
-        /// <returns></returns>
-        /// <exception cref="FormatException"></exception>
         internal double? StringToDouble(ExpressionState state, ReadOnlySpan<char> span)
         {
             if (span.Length == 0)

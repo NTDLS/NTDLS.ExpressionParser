@@ -16,7 +16,15 @@ namespace TestHarness
         {
             //EvalPrint("10 * 10");
             //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
-            EvalPrint("2 * sum(1,null,3)");
+            //EvalPrint("2 * sum(1,null,3)");
+
+            var options = new ExpressionOptions()
+            {
+                DefaultNullValue = 0
+            };
+
+            Console.WriteLine(Expression.Evaluate("2 * sum(1,null,3)", options));
+
 
             //EvalPrint("pow(2, 3)");
             /*

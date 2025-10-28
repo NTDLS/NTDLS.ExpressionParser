@@ -4,7 +4,6 @@ namespace UnitTests
 {
     public class NullTests
     {
-
         [Fact]
         public void Function_ParamNull()
         {
