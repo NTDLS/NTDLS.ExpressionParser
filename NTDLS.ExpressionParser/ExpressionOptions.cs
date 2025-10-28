@@ -11,11 +11,6 @@
         public bool UseFastFloatingPointParser { get; set; } = true;
 
         /// <summary>
-        /// Gets or sets a value indicating whether the parser cache is enabled.
-        /// </summary>
-        public bool UseParserCache { get; set; } = true;
-
-        /// <summary>
         /// Gets or sets the number of significant digits used in calculations.
         /// </summary>
         public ushort Precision { get; set; } = 17;
@@ -24,5 +19,18 @@
         /// Gets or sets the default value to use when a NULL is encountered in expressions.
         /// </summary>
         public double? DefaultNullValue { get; set; } = null;
+
+        /// <summary>
+        /// Returns a hash code for the current object based on its configuration properties.
+        /// </summary>
+        public override int GetHashCode()
+        {
+            int hash = 17;
+            hash = hash * 31 + UseFastFloatingPointParser.GetHashCode();
+            hash = hash * 31 + Precision.GetHashCode();
+            hash = hash * 31 + (DefaultNullValue.HasValue ? 1 : 2);
+            hash = hash * 31 + ((DefaultNullValue?.GetHashCode()) ?? 0);
+            return hash;
+        }
     }
 }

@@ -6,7 +6,6 @@ using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
-
     /// <summary>
     /// Represents a mathematical expression.
     /// </summary>
@@ -47,21 +46,7 @@ namespace NTDLS.ExpressionParser
             _text = Sanitize(text.ToLowerInvariant());
             _originalNextPreComputedCacheSlot = _nextPreComputedCacheSlot;
             _preComputedCache = new PreComputedCacheItem[_operationCount];
-
-            if (Options.UseParserCache)
-            {
-                _expressionHash = HashCode.Combine(_text, Options);
-
-                _preParsedCache = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
-                {
-                    entry.SlidingExpiration = TimeSpan.FromMinutes(5);
-                    return new PreParsedCacheItem?[_operationCount];
-                }) ?? throw new Exception("Failed to create persistent cache.");
-            }
-            else
-            {
-                _preParsedCache = [];
-            }
+            _preParsedCache = new PreParsedCacheItem?[_operationCount];
         }
 
         internal string Sanitize(string expressionText)
@@ -573,10 +558,6 @@ namespace NTDLS.ExpressionParser
         public void ClearFunctions() => ExpressionFunctions.Clear();
 
         #endregion
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong HashCombine(ulong a, ulong b)
-            => a ^= b + 0x9e3779b97f4a7c15UL + (a << 6) + (a >> 2); //high entropy spread.
 
         /// <summary>
         /// Replaces placeholders in the input text with their corresponding precomputed cache values.

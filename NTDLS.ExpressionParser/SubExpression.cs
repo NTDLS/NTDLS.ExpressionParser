@@ -147,8 +147,7 @@ namespace NTDLS.ExpressionParser
                 {
                     var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.Options.UseParserCache
-                        && _parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
                         SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -158,7 +157,7 @@ namespace NTDLS.ExpressionParser
                         int notResult = (rightValue == 0) ? 1 : 0;
                         SwapInCacheKey(operatorIndex, operatorIndex + outParsedLength, notResult);
 
-                        if (isCacheable && _parentExpression.Options.UseParserCache)
+                        if (isCacheable)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -177,8 +176,7 @@ namespace NTDLS.ExpressionParser
                 {
                     var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.Options.UseParserCache
-                        && _parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
                         SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -191,7 +189,7 @@ namespace NTDLS.ExpressionParser
                         }
 
                         SwapInCacheKey(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable && _parentExpression.Options.UseParserCache)
+                        if (isCacheable)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -212,8 +210,7 @@ namespace NTDLS.ExpressionParser
                 {
                     var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.Options.UseParserCache
-                        && _parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
                         SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -226,7 +223,7 @@ namespace NTDLS.ExpressionParser
                         }
 
                         SwapInCacheKey(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable && _parentExpression.Options.UseParserCache)
+                        if (isCacheable)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -246,8 +243,7 @@ namespace NTDLS.ExpressionParser
                 {
                     var preParsedCacheSlot = _parentExpression.ConsumeNextPreParsedCacheSlot();
 
-                    if (_parentExpression.Options.UseParserCache
-                        && _parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
+                    if (_parentExpression.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
                         SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -261,7 +257,7 @@ namespace NTDLS.ExpressionParser
                         }
 
                         SwapInCacheKey(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable && _parentExpression.Options.UseParserCache)
+                        if (isCacheable)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
