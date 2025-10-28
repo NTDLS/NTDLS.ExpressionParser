@@ -9,7 +9,7 @@ namespace NTDLS.ExpressionParser
     /// <summary>
     /// Represents a mathematical expression.
     /// </summary>
-    public partial class Expression
+    public class Expression
     {
         /// <summary>
         /// Delegate for calling a custom function.
