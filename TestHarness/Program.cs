@@ -14,9 +14,9 @@ namespace TestHarness
 
         static void Main()
         {
-            var exp = new Expression("10");
-            Console.WriteLine(exp.Evaluate());
-
+            //EvalPrint("10 * 10");
+            //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
+            EvalPrint("2 * sum(1,null,3)");
 
             //EvalPrint("pow(2, 3)");
             /*
