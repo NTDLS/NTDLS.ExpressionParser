@@ -231,14 +231,19 @@ namespace NTDLS.ExpressionParser
 
             };
 
+            for (int i = 0; i < clone._consumedComputedStepSlots; i++)
+            {
+                clone._computedStep[i] = _computedStep[i];
+            }
+            for (int i = 0; i < clone._consumedScanStepSlots; i++)
+            {
+                clone._scanStep[i] = _scanStep[i];
+            }
             for (int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
             {
+                //We typically do not keep placeholders, but for hard-coded NULLs in the expression we do, because they are supplied by the user.
                 clone._placeholderCache[i] = _placeholderCache[i]; //Copy any pre-defined NULLs.
             }
-
-            //Array.Copy(_placeholderCache, clone._placeholderCache, _placeholderCache.Length); //Copy any pre-computed NULLs.
-            Array.Copy(_computedStep, clone._computedStep, _computedStep.Length);
-            Array.Copy(_scanStep, clone._scanStep, _scanStep.Length);
 
             return clone;
         }
