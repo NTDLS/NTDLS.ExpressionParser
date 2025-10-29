@@ -45,7 +45,7 @@ namespace NTDLS.ExpressionParser
                 _placeholderCache[i] = new PlaceholderCacheItem()
                 {
                     ComputedValue = options.DefaultNullValue,
-                    IsVariable = false,
+                    IsUserVariableDerived = false,
                     IsNullValue = true
                 };
             }
@@ -147,7 +147,7 @@ namespace NTDLS.ExpressionParser
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public string StorePlaceholderCacheItem(double? value, bool isVariable = false)
+        public string StorePlaceholderCacheItem(double? value, bool isUserVariableDerived = false)
         {
             var cacheSlot = ConsumeNextPlaceholderCacheSlot(out var cacheKey);
 
@@ -158,7 +158,7 @@ namespace NTDLS.ExpressionParser
 
             _placeholderCache[cacheSlot] = new PlaceholderCacheItem()
             {
-                IsVariable = isVariable,
+                IsUserVariableDerived = isUserVariableDerived,
                 ComputedValue = value
             };
 
@@ -265,7 +265,7 @@ namespace NTDLS.ExpressionParser
                     _placeholderCache[cacheSlot] = new PlaceholderCacheItem()
                     {
                         ComputedValue = value ?? _options.DefaultNullValue,
-                        IsVariable = true
+                        IsUserVariableDerived = true
                     };
                     WorkingText = WorkingText.Replace(variable, cacheKey);
                 }

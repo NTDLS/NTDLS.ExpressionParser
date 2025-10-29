@@ -64,9 +64,9 @@ namespace NTDLS.ExpressionParser
                     if (Text[i] == ',')
                     {
                         var subExpression = new SubExpression(_parentExpression, _buffer.ToString());
-                        subExpression.Compute(true);
+                        subExpression.Compute();
 
-                        var param = _parentExpression.StringToDouble(subExpression.Text);
+                        var param = _parentExpression.StringToDouble(subExpression.Text, out _);
                         foundNull = foundNull || param == null;
                         if (param != null)
                         {
@@ -88,9 +88,9 @@ namespace NTDLS.ExpressionParser
                         }
 
                         var subExpression = new SubExpression(_parentExpression, _buffer.ToString());
-                        subExpression.Compute(true);
+                        subExpression.Compute();
 
-                        var param = _parentExpression.StringToDouble(subExpression.Text);
+                        var param = _parentExpression.StringToDouble(subExpression.Text, out _);
                         foundNull = foundNull || param == null;
                         parameters.Add(param ?? 0);
                         break;
@@ -105,20 +105,20 @@ namespace NTDLS.ExpressionParser
 
                 if (foundNull)
                 {
-                    StorePlaceholder(functionStartIndex, functionEndIndex, null);
+                    StorePlaceholder(functionStartIndex, functionEndIndex, null, true);
                     return true;
                 }
                 else if (Utility.IsNativeFunction(foundFunction))
                 {
                     double functionResult = Utility.ComputeNativeFunction(foundFunction, parameters.ToArray());
-                    StorePlaceholder(functionStartIndex, functionEndIndex, functionResult);
+                    StorePlaceholder(functionStartIndex, functionEndIndex, functionResult, true);
                 }
                 else
                 {
                     if (_parentExpression.ExpressionFunctions.TryGetValue(foundFunction, out var customFunction))
                     {
                         var functionResult = customFunction.Invoke(parameters.ToArray()) ?? _parentExpression.Options.DefaultNullValue;
-                        StorePlaceholder(functionStartIndex, functionEndIndex, functionResult);
+                        StorePlaceholder(functionStartIndex, functionEndIndex, functionResult, true);
                     }
                     else
                     {
@@ -132,22 +132,16 @@ namespace NTDLS.ExpressionParser
             return false;
         }
 
-        internal string Compute(bool isCacheable)
+        internal string Compute()
         {
             TruncateParenthesizes();
 
             //Process all function calls from right-to-left.
-            while (true)
+            while (ProcessFunctionCall())
             {
-                if (ProcessFunctionCall())
-                {
-                    isCacheable = false;
-                }
-                else
-                {
-                    break;
-                }
             }
+
+            bool isAnyUserVariableDerived = false;
 
             while (true)
             {
@@ -156,17 +150,18 @@ namespace NTDLS.ExpressionParser
                 //Pre-first-order:
                 while ((operatorIndex = GetFreestandingNotOperation(out _)) != -1)
                 {
-                    var rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength, out bool isOperationCacheable);
+                    var rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength, out bool isUserVariableDerived);
+                    isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
                     int? calculatedResult = rightValue == null ? null : (rightValue == 0) ? 1 : 0;
-
-                    StorePlaceholder(operatorIndex, operatorIndex + outParsedLength, calculatedResult);
+                    StorePlaceholder(operatorIndex, operatorIndex + outParsedLength, calculatedResult, isUserVariableDerived);
                 }
 
                 //First order operations:
                 operatorIndex = GetIndexOfOperation(Utility.FirstOrderOperations, out string operation);
                 if (operatorIndex > 0)
                 {
-                    CollapseRightAndLeft(operation, operatorIndex);
+                    CollapseRightAndLeft(operation, operatorIndex, out bool isUserVariableDerived);
+                    isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
                     continue;
                 }
 
@@ -174,7 +169,8 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.SecondOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    CollapseRightAndLeft(operation, operatorIndex);
+                    CollapseRightAndLeft(operation, operatorIndex, out bool isUserVariableDerived);
+                    isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
                     continue;
                 }
 
@@ -182,7 +178,8 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.ThirdOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    CollapseRightAndLeft(operation, operatorIndex);
+                    CollapseRightAndLeft(operation, operatorIndex, out bool isUserVariableDerived);
+                    isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
                     continue;
                 }
 
@@ -195,12 +192,12 @@ namespace NTDLS.ExpressionParser
                 return Text;
             }
 
-            return _parentExpression.State.StorePlaceholderCacheItem(_parentExpression.StringToDouble(Text));
+            return _parentExpression.State.StorePlaceholderCacheItem(_parentExpression.StringToDouble(Text, out _));
         }
 
-        internal void StorePlaceholder(int startIndex, int endIndex, double? value)
+        internal void StorePlaceholder(int startIndex, int endIndex, double? value, bool isUserVariableDerived)
         {
-            var cacheKey = _parentExpression.State.StorePlaceholderCacheItem(value);
+            var cacheKey = _parentExpression.State.StorePlaceholderCacheItem(value, isUserVariableDerived);
             Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);
         }
 
@@ -219,17 +216,19 @@ namespace NTDLS.ExpressionParser
         /// Gets the numbers to the left and right of an operator.
         /// Returns FALSE when NULL is found for either value.
         /// </summary>
-        private void CollapseRightAndLeft(string operation, int operationBeginIndex)
+        private void CollapseRightAndLeft(string operation, int operationBeginIndex, out bool isUserVariableDerived)
         {
-            var left = GetLeftValue(operationBeginIndex, out int leftParsedLength, out bool isLeftCacheable);
-            var right = GetRightValue(operationBeginIndex + operation.Length, out int rightParsedLength, out bool isRightCacheable);
+            var left = GetLeftValue(operationBeginIndex, out int leftParsedLength, out bool isLeftUserVariableDerived);
+            var right = GetRightValue(operationBeginIndex + operation.Length, out int rightParsedLength, out bool isRightUserVariableDerived);
 
             var beginPosition = operationBeginIndex - leftParsedLength;
             var endPosition = operationBeginIndex + rightParsedLength + (operation.Length - 1);
 
+            isUserVariableDerived = isLeftUserVariableDerived || isRightUserVariableDerived;
+
             if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
             {
-                StorePlaceholder(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
+                StorePlaceholder(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue, isUserVariableDerived);
             }
             else
             {
@@ -240,8 +239,8 @@ namespace NTDLS.ExpressionParser
                     result = Utility.ComputePrivative(left ?? 0, operation, right ?? 0);
                 }
 
-                StorePlaceholder(beginPosition, endPosition, result);
-                if (isLeftCacheable && isRightCacheable)
+                StorePlaceholder(beginPosition, endPosition, result, isUserVariableDerived);
+                if (!isLeftUserVariableDerived && !isRightUserVariableDerived)
                 {
                     var parsedNumber = new ComputedStepItem
                     {
@@ -258,12 +257,12 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        private double? GetLeftValue(int operationIndex, out int outParsedLength, out bool isCacheable)
+        private double? GetLeftValue(int operationIndex, out int outParsedLength, out bool isUserVariableDerived)
         {
             if (_parentExpression.State.TryGetScanStep(out var cachedObj))
             {
                 outParsedLength = cachedObj.Length;
-                isCacheable = true;
+                isUserVariableDerived = false;
                 return cachedObj.Value;
             }
             else
@@ -283,7 +282,7 @@ namespace NTDLS.ExpressionParser
                     outParsedLength = (operationIndex - i) - 1;
                     var cacheKey = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(cacheKey);
-                    isCacheable = !cachedItem.IsVariable;
+                    isUserVariableDerived = cachedItem.IsUserVariableDerived;
                     _parentExpression.State.IncrementScanStep();
                     return cachedItem.ComputedValue;
                 }
@@ -307,8 +306,7 @@ namespace NTDLS.ExpressionParser
                     }
 
                     outParsedLength = (operationIndex - i) - 1;
-                    isCacheable = true;
-                    var result = _parentExpression.StringToDouble(span.Slice(operationIndex - outParsedLength, outParsedLength));
+                    var result = _parentExpression.StringToDouble(span.Slice(operationIndex - outParsedLength, outParsedLength), out isUserVariableDerived);
 
                     _parentExpression.State.StoreScanStep(new ScanStepItem
                     {
@@ -321,12 +319,12 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        private double? GetRightValue(int endOfOperationIndex, out int outParsedLength, out bool isCacheable)
+        private double? GetRightValue(int endOfOperationIndex, out int outParsedLength, out bool isUserVariableDerived)
         {
             if (_parentExpression.State.TryGetScanStep(out var cachedObj))
             {
                 outParsedLength = cachedObj.Length;
-                isCacheable = true;
+                isUserVariableDerived = false;
                 return cachedObj.Value;
             }
             else
@@ -345,7 +343,7 @@ namespace NTDLS.ExpressionParser
                     i++;
                     outParsedLength = i;
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span.Slice(1, i - 2));
-                    isCacheable = !cachedItem.IsVariable;
+                    isUserVariableDerived = cachedItem.IsUserVariableDerived;
                     _parentExpression.State.IncrementScanStep();
                     return cachedItem.ComputedValue;
                 }
@@ -362,8 +360,7 @@ namespace NTDLS.ExpressionParser
                     }
 
                     outParsedLength = i;
-                    isCacheable = true;
-                    var result = _parentExpression.StringToDouble(span.Slice(0, i));
+                    var result = _parentExpression.StringToDouble(span.Slice(0, i), out isUserVariableDerived);
 
                     _parentExpression.State.StoreScanStep(new ScanStepItem
                     {

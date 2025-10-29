@@ -68,15 +68,13 @@ namespace NTDLS.ExpressionParser
             State.Reset(Sanitized);
             State.ApplyParameters(Sanitized, _definedParameters);
 
-            bool isCacheable = ExpressionFunctions.Count == 0;
-
             bool isComplete;
             do
             {
                 //Get a sub-expression from the whole expression.
                 isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
                 //Compute the sub-expression.
-                var resultString = subExpression.Compute(isCacheable);
+                var resultString = subExpression.Compute();
                 //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
                 State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
@@ -88,7 +86,7 @@ namespace NTDLS.ExpressionParser
             }
 
             State.HydrateTemplateCache(_expressionHash);
-            return StringToDouble(State.WorkingText);
+            return StringToDouble(State.WorkingText, out _);
         }
 
         /// <summary>
@@ -98,13 +96,12 @@ namespace NTDLS.ExpressionParser
         /// <returns></returns>
         public double? Evaluate(out string showWork)
         {
+            State.Reset(Sanitized);
             State.ApplyParameters(Sanitized, _definedParameters);
 
             var work = new StringBuilder();
 
             work.AppendLine("{");
-
-            bool isCacheable = ExpressionFunctions.Count == 0;
 
             bool isComplete;
             do
@@ -116,7 +113,7 @@ namespace NTDLS.ExpressionParser
                 work.Append("    " + friendlySubExpression);
 
                 //Compute the sub-expression.
-                var resultString = subExpression.Compute(isCacheable);
+                var resultString = subExpression.Compute();
 
                 work.AppendLine($" = {SwapInCacheValues(resultString)}");
 
@@ -136,7 +133,7 @@ namespace NTDLS.ExpressionParser
             showWork = work.ToString();
 
             State.HydrateTemplateCache(_expressionHash);
-            return StringToDouble(State.WorkingText);
+            return StringToDouble(State.WorkingText, out _);
         }
 
         /// <summary>
@@ -353,16 +350,21 @@ namespace NTDLS.ExpressionParser
         /// <summary>
         /// Converts a string or value of a stored cache key into a double.
         /// </summary>
-        internal double? StringToDouble(ReadOnlySpan<char> span)
+        internal double? StringToDouble(ReadOnlySpan<char> span, out bool isUserVariableDerived)
         {
             if (span.Length == 0)
             {
+                isUserVariableDerived = false;
                 return null;
             }
             else if (span[0] == '$')
             {
-                return State.GetPlaceholderCacheItem(span[1..^1]).ComputedValue;
+                var placeholder = State.GetPlaceholderCacheItem(span[1..^1]);
+                isUserVariableDerived = placeholder.IsUserVariableDerived;
+                return placeholder.ComputedValue;
             }
+
+            isUserVariableDerived = false;
 
             if (Options.UseFastFloatingPointParser)
             {

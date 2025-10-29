@@ -23,7 +23,7 @@
     internal struct PlaceholderCacheItem
     {
         public double? ComputedValue;
-        public bool IsVariable;
+        public bool IsUserVariableDerived;
         public bool IsNullValue;
     }
 }

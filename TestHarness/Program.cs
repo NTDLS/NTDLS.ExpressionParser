@@ -29,11 +29,22 @@ namespace TestHarness
 
         static void Main()
         {
-            var expression = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
-            Console.WriteLine("---FIRST---");
-            Console.WriteLine(expression.Evaluate()); //20
-            Console.WriteLine("---SECOND---");
-            Console.WriteLine(expression.Evaluate()); //20
+            var expression = new Expression("10 * ((5 + extra + CustomSum(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10");
+
+            expression.SetParameter("extra", 1000);
+
+            expression.AddFunction("CustomSum", parameters =>
+            {
+                return null;
+            });
+
+            Console.WriteLine(expression.Evaluate()?.ToString() ?? "{NULL}");
+
+            //var expression = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
+            //Console.WriteLine("---FIRST---");
+            //Console.WriteLine(expression.Evaluate()); //20
+            //Console.WriteLine("---SECOND---");
+            //Console.WriteLine(expression.Evaluate()); //20
             //Console.WriteLine(expression.Evaluate()); //20
 
             //expression.SetParameter("extra", 10);
