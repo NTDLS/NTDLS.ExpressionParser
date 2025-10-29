@@ -48,7 +48,7 @@ namespace NTDLS.ExpressionParser
                 }) ?? throw new Exception("Failed to create persistent cache.");
 
                 Sanitized = cached.Sanitized;
-                State = cached.State.Clone();
+                State = cached.State.Clone(cached.Sanitized);
             }
             else
             {

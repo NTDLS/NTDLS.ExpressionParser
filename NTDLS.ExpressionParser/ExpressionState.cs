@@ -153,7 +153,7 @@ namespace NTDLS.ExpressionParser
             _nextPositionStepCacheSlot = 0;
         }
 
-        public ExpressionState Clone()
+        public ExpressionState Clone(Sanitized sanitized)
         {
             var clone = new ExpressionState(_options, WorkingText.Length * 2)
             {
@@ -166,7 +166,12 @@ namespace NTDLS.ExpressionParser
                 _isPositionStepCacheHydrated = _isPositionStepCacheHydrated
             };
 
-            Array.Copy(_placeholderCache, clone._placeholderCache, _placeholderCache.Length); //Copy any pre-computed NULLs.
+            for(int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
+            {
+                clone._placeholderCache[i] = _placeholderCache[i]; //Copy any pre-defined NULLs.
+            }
+
+            //Array.Copy(_placeholderCache, clone._placeholderCache, _placeholderCache.Length); //Copy any pre-computed NULLs.
             Array.Copy(_positionStepCache, clone._positionStepCache, _positionStepCache.Length);
 
             return clone;
