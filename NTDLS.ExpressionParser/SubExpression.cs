@@ -203,12 +203,12 @@ namespace NTDLS.ExpressionParser
                 return Text;
             }
 
-            return _parentExpression.State.StorePreComputedCacheItem(_parentExpression.StringToDouble(Text));
+            return _parentExpression.State.StorePlaceholderCacheItem(_parentExpression.StringToDouble(Text));
         }
 
         internal void StorePreComputed(int startIndex, int endIndex, double? value)
         {
-            var cacheKey = _parentExpression.State.StorePreComputedCacheItem(value);
+            var cacheKey = _parentExpression.State.StorePlaceholderCacheItem(value);
             Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);
         }
 
@@ -258,7 +258,7 @@ namespace NTDLS.ExpressionParser
                 i--;
                 outParsedLength = (operationIndex - i) - 1;
                 var cacheKey = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
-                var cachedItem = _parentExpression.State.GetPreComputedCacheItem(cacheKey);
+                var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(cacheKey);
                 return cachedItem.ComputedValue;
             }
             else
@@ -300,7 +300,7 @@ namespace NTDLS.ExpressionParser
                 }
                 i++;
                 outParsedLength = i;
-                var cachedItem = _parentExpression.State.GetPreComputedCacheItem(span.Slice(1, i - 2));
+                var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span.Slice(1, i - 2));
                 return cachedItem.ComputedValue;
             }
             else
