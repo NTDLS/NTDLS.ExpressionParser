@@ -16,7 +16,7 @@
     internal struct ScanStepItem
     {
         public bool IsValid;
-        public double? ParsedValue;
+        public double? Value;
         public int Length;
     }
 

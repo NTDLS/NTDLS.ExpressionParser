@@ -29,13 +29,18 @@ namespace TestHarness
 
         static void Main()
         {
-            var expression = new Expression("10 * ((5 + extra + ( 10 )) *  60.5) * 10");
+            var expression = new Expression("1+2+3");
+            Console.WriteLine("---FIRST---");
+            Console.WriteLine(expression.Evaluate()); //20
+            Console.WriteLine("---SECOND---");
+            Console.WriteLine(expression.Evaluate()); //20
+            //Console.WriteLine(expression.Evaluate()); //20
 
-            expression.SetParameter("extra", 10);
-            Console.WriteLine(expression.Evaluate()); //151250
+            //expression.SetParameter("extra", 10);
+            //Console.WriteLine(expression.Evaluate()); //151250
 
-            expression.SetParameter("extra", 20);
-            Console.WriteLine(expression.Evaluate()); //211750
+            //expression.SetParameter("extra", 20);
+            //Console.WriteLine(expression.Evaluate()); //211750
 
 #if !DEBUG
             var timings = new List<double>();

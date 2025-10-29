@@ -1,9 +1,7 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Options;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace NTDLS.ExpressionParser
 {
@@ -15,12 +13,12 @@ namespace NTDLS.ExpressionParser
         private int _nextComputedStepSlot = 0;
         private int _consumedComputedStepSlots = 0;
         private ComputedStepItem[] _computedStep = [];
-        private bool _isTemplateCacheHydrated = false;
 
         private int _nextScanStepSlot = 0;
         private int _consumedScanStepSlots = 0;
         private ScanStepItem[] _scanStep = [];
-        private bool _isScanStepHydrated = false;
+
+        private bool _isTemplateCacheHydrated = false;
 
         private PlaceholderCacheItem[] _placeholderCache = [];
         private int _nextPlaceholderCacheSlot = 0;
@@ -39,7 +37,7 @@ namespace NTDLS.ExpressionParser
             _computedStep = new ComputedStepItem[_operationCount];
             _nextComputedStepSlot = 0;
 
-            _scanStep = new ScanStepItem[_operationCount];
+            _scanStep = new ScanStepItem[_operationCount * 3];
             _nextScanStepSlot = 0;
 
             for (int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
@@ -217,6 +215,7 @@ namespace NTDLS.ExpressionParser
             WorkingText = sanitized.Text;
             _nextPlaceholderCacheSlot = sanitized.ConsumedPlaceholderCacheSlots;
             _nextComputedStepSlot = 0;
+            _nextScanStepSlot = 0;
         }
 
         public ExpressionState Clone(Sanitized sanitized)
