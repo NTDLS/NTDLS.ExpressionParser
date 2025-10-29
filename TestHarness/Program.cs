@@ -14,6 +14,19 @@ namespace TestHarness
 
         static void Main()
         {
+            var expr = new Expression("v1");
+
+            expr.SetParameter("v1", 12345);
+            Console.WriteLine(expr.Evaluate());
+            expr.SetParameter("v1", 12345);
+            Console.WriteLine(expr.Evaluate());
+            expr.SetParameter("v1", 12345);
+            Console.WriteLine(expr.Evaluate());
+            expr.SetParameter("v1", 12345);
+            Console.WriteLine(expr.Evaluate());
+
+
+            //EvalPrint("10");
             //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
             //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
             //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");

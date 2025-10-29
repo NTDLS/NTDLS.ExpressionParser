@@ -12,3 +12,7 @@ NTDLS.ExpressionParser/obj/
 UnitTests/bin/
 
 UnitTests/obj/
+
+PerfTest/bin/
+
+PerfTest/obj/
