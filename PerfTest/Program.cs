@@ -6,9 +6,9 @@ namespace PerfTest
     {
         static void Main(string[] args)
         {
-            //NTDLS();
+            NTDLS();
             //NCALC();
-            NTDLSPerCalc();
+            //NTDLSPerCalc();
             //NCALCPerCalc();
         }
 

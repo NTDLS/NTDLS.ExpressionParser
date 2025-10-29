@@ -48,7 +48,7 @@ namespace NTDLS.ExpressionParser
                 }) ?? throw new Exception("Failed to create persistent cache.");
 
                 Sanitized = cached.Sanitized;
-                State = cached.State.Clone(cached.Sanitized);
+                State = cached.State.Clone();
             }
             else
             {
@@ -69,24 +69,26 @@ namespace NTDLS.ExpressionParser
             State.Reset(Sanitized);
             State.ApplyParameters(Sanitized, _definedParameters);
 
+            bool isCacheable = ExpressionFunctions.Count == 0;
+
             bool isComplete;
             do
             {
                 //Get a sub-expression from the whole expression.
                 isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
                 //Compute the sub-expression.
-                var resultString = subExpression.Compute();
+                var resultString = subExpression.Compute(isCacheable);
                 //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
                 State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
 
             if (State.WorkingText[0] == '$')
             {
-                //State.HydrateTemplateParsedCache(_expressionHash);
-                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
+                State.HydrateTemplateParsedCache(_expressionHash);
+                return State.GetPreComputedCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
-            //State.HydrateTemplateParsedCache(_expressionHash);
+            State.HydrateTemplateParsedCache(_expressionHash);
             return StringToDouble(State.WorkingText);
         }
 
@@ -103,6 +105,8 @@ namespace NTDLS.ExpressionParser
 
             work.AppendLine("{");
 
+            bool isCacheable = ExpressionFunctions.Count == 0;
+
             bool isComplete;
             do
             {
@@ -113,7 +117,7 @@ namespace NTDLS.ExpressionParser
                 work.Append("    " + friendlySubExpression);
 
                 //Compute the sub-expression.
-                var resultString = subExpression.Compute();
+                var resultString = subExpression.Compute(isCacheable);
 
                 work.AppendLine($" = {SwapInCacheValues(resultString)}");
 
@@ -126,13 +130,13 @@ namespace NTDLS.ExpressionParser
             if (State.WorkingText[0] == '$')
             {
                 showWork = work.ToString();
-                //State.HydrateTemplateParsedCache(_expressionHash);
-                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
+                State.HydrateTemplateParsedCache(_expressionHash);
+                return State.GetPreComputedCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
             showWork = work.ToString();
 
-            //State.HydrateTemplateParsedCache(_expressionHash);
+            State.HydrateTemplateParsedCache(_expressionHash);
             return StringToDouble(State.WorkingText);
         }
 
@@ -270,7 +274,7 @@ namespace NTDLS.ExpressionParser
                 if (begIndex >= 0 && endIndex > begIndex)
                 {
                     var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
-                    copy = copy.Replace($"${cacheKey}$", State.GetPlaceholderCacheItem(cacheKey).ComputedValue?.ToString(_precisionFormat) ?? "null");
+                    copy = copy.Replace($"${cacheKey}$", State.GetPreComputedCacheItem(cacheKey).ComputedValue?.ToString(_precisionFormat) ?? "null");
                 }
                 else
                 {
@@ -358,7 +362,7 @@ namespace NTDLS.ExpressionParser
             }
             else if (span[0] == '$')
             {
-                return State.GetPlaceholderCacheItem(span[1..^1]).ComputedValue;
+                return State.GetPreComputedCacheItem(span[1..^1]).ComputedValue;
             }
 
             if (Options.UseFastFloatingPointParser)

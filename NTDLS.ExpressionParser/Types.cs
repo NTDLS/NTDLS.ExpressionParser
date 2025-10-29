@@ -5,13 +5,14 @@
     /// </summary>
     public delegate double? ExpressionFunction(double[] parameters);
 
-    internal struct PositionStepCacheItem
+    internal struct PlaceholderCacheItem
     {
+        public double? ParsedValue;
         public int BeginPosition;
         public int EndPosition;
     }
 
-    internal struct PlaceholderCacheItem
+    internal struct PreComputedCacheItem
     {
         public double? ComputedValue;
         public bool IsVariable;
