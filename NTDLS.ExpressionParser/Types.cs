@@ -12,6 +12,12 @@
         public int EndPosition;
     }
 
+    internal struct OperationStepItem
+    {
+        public string Operation;
+        public int Index;
+    }
+
     internal struct ScanStepItem
     {
         public double? Value;

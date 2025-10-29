@@ -416,23 +416,42 @@ namespace NTDLS.ExpressionParser
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int GetIndexOfOperation(ReadOnlySpan<char> validOperations, out string foundOperation)
         {
-            ReadOnlySpan<char> span = Text.AsSpan();
-
-            for (int i = 1; i < span.Length; i++)
+            if (_parentExpression.State.OperationStepCache.TryGet(out var cachedObj))
             {
-                char c = span[i];
-                for (int j = 0; j < validOperations.Length; j++)
+                foundOperation = cachedObj.Operation;
+                return cachedObj.Index;
+            }
+            else
+            {
+                ReadOnlySpan<char> span = Text.AsSpan();
+
+                for (int i = 1; i < span.Length; i++)
                 {
-                    if (c == validOperations[j])
+                    char c = span[i];
+                    for (int j = 0; j < validOperations.Length; j++)
                     {
-                        foundOperation = c.ToString();
-                        return i;
+                        if (c == validOperations[j])
+                        {
+                            _parentExpression.State.OperationStepCache.Store(new OperationStepItem()
+                            {
+                                Index = i,
+                                Operation = c.ToString()
+                            }, true);
+                            foundOperation = c.ToString();
+                            return i;
+                        }
                     }
                 }
-            }
 
-            foundOperation = string.Empty;
-            return -1;
+                foundOperation = string.Empty;
+
+                _parentExpression.State.OperationStepCache.Store(new OperationStepItem()
+                {
+                    Index = -1
+                }, true);
+
+                return -1;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

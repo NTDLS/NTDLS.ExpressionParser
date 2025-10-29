@@ -14,7 +14,7 @@ namespace TestHarness
 
         static void Baseline()
         {
-            var expression = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10"); //71.8829
+            var expression = new Expression("(2+3)*4"); //71.8829
 
             var stopwatch = Stopwatch.StartNew();
             for (int i = 0; i < 100000; i++)

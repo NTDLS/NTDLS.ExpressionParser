@@ -8,6 +8,7 @@ namespace NTDLS.ExpressionParser
     {
         public VisitorCache<ScanStepItem> ScanStepCache;
         public VisitorCache<ComputedStepItem> ComputedStepCache;
+        public VisitorCache<OperationStepItem> OperationStepCache;
 
         public string WorkingText { get; set; } = string.Empty;
         public readonly StringBuilder Buffer;
@@ -31,6 +32,7 @@ namespace NTDLS.ExpressionParser
 
             ScanStepCache = new(_operationCount * 3);
             ComputedStepCache = new(_operationCount * 3);
+            OperationStepCache = new(_operationCount);
 
             for (int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
             {
@@ -46,8 +48,9 @@ namespace NTDLS.ExpressionParser
         public ExpressionState(ExpressionOptions options, int operationCount, int preAllocation)
         {
             Buffer = new StringBuilder(preAllocation);
-            ScanStepCache = new(_operationCount * 3);
-            ComputedStepCache = new(_operationCount * 3);
+            ScanStepCache = new(operationCount * 3);
+            ComputedStepCache = new(operationCount * 3);
+            OperationStepCache = new(operationCount);
             _options = options;
         }
 
@@ -110,6 +113,7 @@ namespace NTDLS.ExpressionParser
                         {
                             ComputedStepCache.CopyTo(entry.State.ComputedStepCache);
                             ScanStepCache.CopyTo(entry.State.ScanStepCache);
+                            OperationStepCache.CopyTo(entry.State.OperationStepCache);
                         }
                         _isTemplateCacheHydrated = true;
                     }
@@ -123,6 +127,7 @@ namespace NTDLS.ExpressionParser
             _nextPlaceholderCacheSlot = sanitized.ConsumedPlaceholderCacheSlots;
             ComputedStepCache.Reset();
             ScanStepCache.Reset();
+            OperationStepCache.Reset();
         }
 
         public ExpressionState Clone(Sanitized sanitized)
@@ -133,13 +138,12 @@ namespace NTDLS.ExpressionParser
                 _operationCount = _operationCount,
                 _nextPlaceholderCacheSlot = _nextPlaceholderCacheSlot,
                 _placeholderCache = new PlaceholderCacheItem[_placeholderCache.Length],
-                _isTemplateCacheHydrated = _isTemplateCacheHydrated,
-                ComputedStepCache = new(_operationCount * 3),
-                ScanStepCache = new(_operationCount * 3),
+                _isTemplateCacheHydrated = _isTemplateCacheHydrated
             };
 
             ComputedStepCache.CopyTo(clone.ComputedStepCache);
             ScanStepCache.CopyTo(clone.ScanStepCache);
+            OperationStepCache.CopyTo(clone.OperationStepCache);
 
             for (int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
             {
