@@ -156,9 +156,7 @@ namespace NTDLS.ExpressionParser
                 //Pre-first-order:
                 while ((operatorIndex = GetFreestandingNotOperation(out _)) != -1)
                 {
-                    var placeholderCacheSlot = _parentExpression.State.ConsumeNextPlaceholderCacheSlot();
-
-                    if (_parentExpression.State.TryGetPlaceholderCache(placeholderCacheSlot, out PlaceholderCacheItem cachedObj))
+                    if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
                     {
                         StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -170,13 +168,17 @@ namespace NTDLS.ExpressionParser
 
                         if (isCacheable && isOperationCacheable)
                         {
-                            var parsedNumber = new PlaceholderCacheItem
+                            var parsedNumber = new ComputedStepItem
                             {
                                 ParsedValue = calculatedResult,
                                 BeginPosition = operatorIndex,
                                 EndPosition = operatorIndex + outParsedLength
                             };
-                            _parentExpression.State.StorePlaceholderCache(placeholderCacheSlot, parsedNumber);
+                            _parentExpression.State.StoreComputedStep(parsedNumber);
+                        }
+                        else
+                        {
+                            _parentExpression.State.IncrementComputedStep();
                         }
                     }
                 }
@@ -185,9 +187,7 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.FirstOrderOperations, out string operation);
                 if (operatorIndex > 0)
                 {
-                    var placeholderCacheSlot = _parentExpression.State.ConsumeNextPlaceholderCacheSlot();
-
-                    if (_parentExpression.State.TryGetPlaceholderCache(placeholderCacheSlot, out PlaceholderCacheItem cachedObj))
+                    if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
                     {
                         StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -202,13 +202,17 @@ namespace NTDLS.ExpressionParser
                         StorePreComputed(beginPosition, endPosition, calculatedResult);
                         if (isCacheable && isOperationCacheable)
                         {
-                            var parsedNumber = new PlaceholderCacheItem
+                            var parsedNumber = new ComputedStepItem
                             {
                                 ParsedValue = calculatedResult,
                                 BeginPosition = beginPosition,
                                 EndPosition = endPosition
                             };
-                            _parentExpression.State.StorePlaceholderCache(placeholderCacheSlot, parsedNumber);
+                            _parentExpression.State.StoreComputedStep(parsedNumber);
+                        }
+                        else
+                        {
+                            _parentExpression.State.IncrementComputedStep();
                         }
                     }
 
@@ -219,9 +223,7 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.SecondOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    var placeholderCacheSlot = _parentExpression.State.ConsumeNextPlaceholderCacheSlot();
-
-                    if (_parentExpression.State.TryGetPlaceholderCache(placeholderCacheSlot, out PlaceholderCacheItem cachedObj))
+                    if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
                     {
                         StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -236,13 +238,17 @@ namespace NTDLS.ExpressionParser
                         StorePreComputed(beginPosition, endPosition, calculatedResult);
                         if (isCacheable && isOperationCacheable)
                         {
-                            var parsedNumber = new PlaceholderCacheItem
+                            var parsedNumber = new ComputedStepItem
                             {
                                 ParsedValue = calculatedResult,
                                 BeginPosition = beginPosition,
                                 EndPosition = endPosition
                             };
-                            _parentExpression.State.StorePlaceholderCache(placeholderCacheSlot, parsedNumber);
+                            _parentExpression.State.StoreComputedStep(parsedNumber);
+                        }
+                        else
+                        {
+                            _parentExpression.State.IncrementComputedStep();
                         }
                     }
                     continue;
@@ -252,9 +258,7 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.ThirdOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    var placeholderCacheSlot = _parentExpression.State.ConsumeNextPlaceholderCacheSlot();
-
-                    if (_parentExpression.State.TryGetPlaceholderCache(placeholderCacheSlot, out PlaceholderCacheItem cachedObj))
+                    if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
                     {
                         StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
@@ -270,13 +274,17 @@ namespace NTDLS.ExpressionParser
                         StorePreComputed(beginPosition, endPosition, calculatedResult);
                         if (isCacheable && isOperationCacheable)
                         {
-                            var parsedNumber = new PlaceholderCacheItem
+                            var parsedNumber = new ComputedStepItem
                             {
                                 ParsedValue = calculatedResult,
                                 BeginPosition = beginPosition,
                                 EndPosition = endPosition
                             };
-                            _parentExpression.State.StorePlaceholderCache(placeholderCacheSlot, parsedNumber);
+                            _parentExpression.State.StoreComputedStep(parsedNumber);
+                        }
+                        else
+                        {
+                            _parentExpression.State.IncrementComputedStep();
                         }
                     }
                     continue;
@@ -291,12 +299,12 @@ namespace NTDLS.ExpressionParser
                 return Text;
             }
 
-            return _parentExpression.State.StorePreComputedCacheItem(_parentExpression.StringToDouble(Text));
+            return _parentExpression.State.StorePlaceholderCacheItem(_parentExpression.StringToDouble(Text));
         }
 
         internal void StorePreComputed(int startIndex, int endIndex, double? value)
         {
-            var cacheKey = _parentExpression.State.StorePreComputedCacheItem(value);
+            var cacheKey = _parentExpression.State.StorePlaceholderCacheItem(value);
             Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);
         }
 
@@ -348,7 +356,7 @@ namespace NTDLS.ExpressionParser
                 i--;
                 outParsedLength = (operationIndex - i) - 1;
                 var cacheKey = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
-                var cachedItem = _parentExpression.State.GetPreComputedCacheItem(cacheKey);
+                var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(cacheKey);
                 isCacheable = false;
                 return cachedItem.ComputedValue;
             }
@@ -379,39 +387,61 @@ namespace NTDLS.ExpressionParser
 
         private double? GetRightValue(int endOfOperationIndex, out int outParsedLength, out bool isCacheable)
         {
-            var span = Text.AsSpan(endOfOperationIndex);
-
-            int i = 0;
-
-            if (span[i] == '$')
+            /*
+            if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
             {
-                i++; //Skip the cache indicator.
-                while (span[i] != '$')
-                {
-                    i++;
-                }
-                i++;
-                outParsedLength = i;
-                var cachedItem = _parentExpression.State.GetPreComputedCacheItem(span.Slice(1, i - 2));
+                outParsedLength = cachedObj.Length;
                 isCacheable = false;
-                return cachedItem.ComputedValue;
+                return cachedObj.ParsedValue;
             }
             else
             {
-                if (i < span.Length && (span[i] == '-' || span[i] == '+'))
-                {
-                    i++; //Skip the explicit positive or negative sign or cache indicator.
-                }
+                */
+                var span = Text.AsSpan(endOfOperationIndex);
 
-                while (i < span.Length && ((span[i] - '0' >= 0 && span[i] - '0' <= 9) || span[i] == '.'))
+                int i = 0;
+
+                if (span[i] == '$')
                 {
+                    i++; //Skip the cache indicator.
+                    while (span[i] != '$')
+                    {
+                        i++;
+                    }
                     i++;
+                    outParsedLength = i;
+                    var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span.Slice(1, i - 2));
+                    isCacheable = false;
+                    //_parentExpression.State.IncrementComputedStep();
+                    return cachedItem.ComputedValue;
                 }
+                else
+                {
+                    if (i < span.Length && (span[i] == '-' || span[i] == '+'))
+                    {
+                        i++; //Skip the explicit positive or negative sign or cache indicator.
+                    }
 
-                outParsedLength = i;
-                isCacheable = true;
-                return _parentExpression.StringToDouble(span.Slice(0, i));
-            }
+                    while (i < span.Length && ((span[i] - '0' >= 0 && span[i] - '0' <= 9) || span[i] == '.'))
+                    {
+                        i++;
+                    }
+
+                    outParsedLength = i;
+                    isCacheable = true;
+                    var result = _parentExpression.StringToDouble(span.Slice(0, i));
+                /*
+                    _parentExpression.State.StoreComputedStep(new ComputedStepItem
+                    {
+                        ParsedValue = result,
+                        //BeginPosition = endOfOperationIndex,
+                        //EndPosition = endOfOperationIndex + outParsedLength,
+                        Length = outParsedLength
+                    });
+                */
+                    return result;
+                }
+            //}
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

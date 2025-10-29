@@ -48,7 +48,7 @@ namespace NTDLS.ExpressionParser
                 }) ?? throw new Exception("Failed to create persistent cache.");
 
                 Sanitized = cached.Sanitized;
-                State = cached.State.Clone();
+                State = cached.State.Clone(cached.Sanitized);
             }
             else
             {
@@ -84,11 +84,11 @@ namespace NTDLS.ExpressionParser
 
             if (State.WorkingText[0] == '$')
             {
-                State.HydrateTemplateParsedCache(_expressionHash);
-                return State.GetPreComputedCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
+                State.HydrateTemplateCache(_expressionHash);
+                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
-            State.HydrateTemplateParsedCache(_expressionHash);
+            State.HydrateTemplateCache(_expressionHash);
             return StringToDouble(State.WorkingText);
         }
 
@@ -130,13 +130,13 @@ namespace NTDLS.ExpressionParser
             if (State.WorkingText[0] == '$')
             {
                 showWork = work.ToString();
-                State.HydrateTemplateParsedCache(_expressionHash);
-                return State.GetPreComputedCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
+                State.HydrateTemplateCache(_expressionHash);
+                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
             showWork = work.ToString();
 
-            State.HydrateTemplateParsedCache(_expressionHash);
+            State.HydrateTemplateCache(_expressionHash);
             return StringToDouble(State.WorkingText);
         }
 
@@ -274,7 +274,7 @@ namespace NTDLS.ExpressionParser
                 if (begIndex >= 0 && endIndex > begIndex)
                 {
                     var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
-                    copy = copy.Replace($"${cacheKey}$", State.GetPreComputedCacheItem(cacheKey).ComputedValue?.ToString(_precisionFormat) ?? "null");
+                    copy = copy.Replace($"${cacheKey}$", State.GetPlaceholderCacheItem(cacheKey).ComputedValue?.ToString(_precisionFormat) ?? "null");
                 }
                 else
                 {
@@ -362,7 +362,7 @@ namespace NTDLS.ExpressionParser
             }
             else if (span[0] == '$')
             {
-                return State.GetPreComputedCacheItem(span[1..^1]).ComputedValue;
+                return State.GetPlaceholderCacheItem(span[1..^1]).ComputedValue;
             }
 
             if (Options.UseFastFloatingPointParser)

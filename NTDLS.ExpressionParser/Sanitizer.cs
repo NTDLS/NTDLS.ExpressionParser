@@ -33,7 +33,7 @@ namespace NTDLS.ExpressionParser
                 sanitized.OperationCount++;
             }
 
-            sanitized.ConsumedPreComputedCacheSlots = sanitized.OperationCount;
+            sanitized.ConsumedPlaceholderCacheSlots = sanitized.OperationCount;
 
             var expressionSpan = expressionText.AsSpan();
 
