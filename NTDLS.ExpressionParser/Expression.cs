@@ -69,15 +69,13 @@ namespace NTDLS.ExpressionParser
             State.Reset(Sanitized);
             State.ApplyParameters(Sanitized, _definedParameters);
 
-            bool isCacheable = ExpressionFunctions.Count == 0;
-
             bool isComplete;
             do
             {
                 //Get a sub-expression from the whole expression.
                 isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
                 //Compute the sub-expression.
-                var resultString = subExpression.Compute(isCacheable);
+                var resultString = subExpression.Compute();
                 //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
                 State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
@@ -105,8 +103,6 @@ namespace NTDLS.ExpressionParser
 
             work.AppendLine("{");
 
-            bool isCacheable = ExpressionFunctions.Count == 0;
-
             bool isComplete;
             do
             {
@@ -117,7 +113,7 @@ namespace NTDLS.ExpressionParser
                 work.Append("    " + friendlySubExpression);
 
                 //Compute the sub-expression.
-                var resultString = subExpression.Compute(isCacheable);
+                var resultString = subExpression.Compute();
 
                 work.AppendLine($" = {SwapInCacheValues(resultString)}");
 

@@ -12,13 +12,16 @@ namespace NTDLS.ExpressionParser
         public string WorkingText { get; set; } = string.Empty;
         public readonly StringBuilder Buffer;
 
-        private int _nextPlaceholderCacheSlot = 0;
+        //private int _nextPreParsedCacheSlot = 0;
+        //private PreParsedCacheItem[] _preParsedCache = [];
+
+        private int _nextParsedResultCacheSlot = 0;
         private PreComputedCacheItem[] _preComputedCache = [];
         private int _nextPreComputedCacheSlot = 0;
         private int _operationCount = 0;
-        private PlaceholderCacheItem?[] _placeholderCache = [];
+        private ParsedResultCacheItem[] _parsedResultCache = [];
         private readonly ExpressionOptions _options;
-        private bool _isPlaceholderCacheHydrated = false;
+        private bool _isParsedResultCacheHydrated = false;
 
         public ExpressionState(Sanitized sanitized, ExpressionOptions options)
         {
@@ -28,9 +31,9 @@ namespace NTDLS.ExpressionParser
             WorkingText = sanitized.Text;
             _operationCount = sanitized.OperationCount;
             _nextPreComputedCacheSlot = sanitized.ConsumedPreComputedCacheSlots;
-            _preComputedCache = new PreComputedCacheItem[sanitized.OperationCount];
-            _placeholderCache = new PlaceholderCacheItem?[_operationCount];
-            _nextPlaceholderCacheSlot = 0;
+            _preComputedCache = new PreComputedCacheItem[_operationCount + 10];
+            _parsedResultCache = new ParsedResultCacheItem[_operationCount + 10];
+            _nextParsedResultCacheSlot = 0;
 
             for (int i = 0; i < sanitized.ConsumedPreComputedCacheSlots; i++)
             {
@@ -50,37 +53,30 @@ namespace NTDLS.ExpressionParser
             _options = options;
         }
 
-        #region Pre-Parsed Cache Management.
-
-        public int ConsumeNextPlaceholderCacheSlot()
-        {
-            return _nextPlaceholderCacheSlot++;
-        }
+        #region Parsed Result Cache Management.
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGetPlaceholderCache(int slot, [NotNullWhen(true)] out PlaceholderCacheItem value)
+        public bool TryGetParsedResultCache([NotNullWhen(true)] out ParsedResultCacheItem value, out int slot)
         {
-            if (slot < _placeholderCache.Length)
+            slot = _nextParsedResultCacheSlot++;
+
+            if (slot < _nextParsedResultCacheSlot - 1)
             {
-                var cached = _placeholderCache[slot];
-                if (cached != null)
-                {
-                    value = cached.Value;
-                    return true;
-                }
+                value = _parsedResultCache[slot];
+                return true;
             }
             value = default;
             return false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void StorePlaceholderCache(int slot, PlaceholderCacheItem value)
+        public void StoreParsedResultCache(int slot, ParsedResultCacheItem value)
         {
-            if (slot >= _placeholderCache.Length) //Resize the cache if needed.
+            if (slot >= _parsedResultCache.Length) //Resize the cache if needed.
             {
-                Array.Resize(ref _placeholderCache, (_placeholderCache.Length + 1) * 2);
+                Array.Resize(ref _parsedResultCache, (_parsedResultCache.Length + 1) * 2);
             }
-            _placeholderCache[slot] = value;
+            _parsedResultCache[slot] = value;
         }
 
         #endregion
@@ -130,31 +126,32 @@ namespace NTDLS.ExpressionParser
 
         public void HydrateTemplateParsedCache(int expressionHash)
         {
-            if (!_isPlaceholderCacheHydrated)
+            if (!_isParsedResultCacheHydrated)
             {
                 lock (this)
                 {
-                    if (!_isPlaceholderCacheHydrated)
+                    if (!_isParsedResultCacheHydrated)
                     {
                         if (Utility.PersistentCaches.TryGetValue(expressionHash, out CachedState? entry) && entry != null)
                         {
-                            entry.State.HydratePlaceholderCache(_placeholderCache);
+                            entry.State.HydrateParsedResultCache(_parsedResultCache);
                         }
-                        _isPlaceholderCacheHydrated = true;
+                        _isParsedResultCacheHydrated = true;
                     }
                 }
             }
         }
 
-        private void HydratePlaceholderCache(PlaceholderCacheItem?[] populatedCache)
+        private void HydrateParsedResultCache(ParsedResultCacheItem[] populatedCache)
         {
-            Interlocked.Exchange(ref _placeholderCache, populatedCache);
+            Interlocked.Exchange(ref _parsedResultCache, populatedCache);
         }
 
         public void Reset(Sanitized sanitized)
         {
+            WorkingText = sanitized.Text;
             _nextPreComputedCacheSlot = sanitized.ConsumedPreComputedCacheSlots;
-            _nextPlaceholderCacheSlot = 0;
+            _nextParsedResultCacheSlot = 0;
         }
 
         public ExpressionState Clone()
@@ -165,13 +162,13 @@ namespace NTDLS.ExpressionParser
                 _operationCount = _operationCount,
                 _nextPreComputedCacheSlot = _nextPreComputedCacheSlot,
                 _preComputedCache = new PreComputedCacheItem[_preComputedCache.Length],
-                _placeholderCache = new PlaceholderCacheItem?[_placeholderCache.Length],
-                _nextPlaceholderCacheSlot = 0,
-                _isPlaceholderCacheHydrated = _isPlaceholderCacheHydrated
+                _parsedResultCache = new ParsedResultCacheItem[_parsedResultCache.Length],
+                _nextParsedResultCacheSlot = 0,
+                _isParsedResultCacheHydrated = _isParsedResultCacheHydrated
             };
 
             Array.Copy(_preComputedCache, clone._preComputedCache, _preComputedCache.Length); //Copy any pre-computed NULLs.
-            Array.Copy(_placeholderCache, clone._placeholderCache, _placeholderCache.Length);
+            Array.Copy(_parsedResultCache, clone._parsedResultCache, _parsedResultCache.Length);
 
             return clone;
         }
