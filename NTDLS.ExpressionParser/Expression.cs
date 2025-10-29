@@ -57,8 +57,6 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-
-
         #endregion
 
         #region Evaluate.

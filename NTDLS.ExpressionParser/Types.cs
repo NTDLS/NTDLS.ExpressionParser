@@ -5,7 +5,7 @@
     /// </summary>
     public delegate double? ExpressionFunction(double[] parameters);
 
-    internal struct PreParsedCacheItem
+    internal struct PlaceholderCacheItem
     {
         public double? ParsedValue;
         public int BeginPosition;
