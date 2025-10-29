@@ -136,8 +136,9 @@ namespace NTDLS.ExpressionParser
 
         #endregion
 
-        #region Pre-Computed Cache Management.
+        #region Placeholder Cache Management.
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int ConsumeNextPlaceholderCacheSlot(out string cacheKey)
         {
             int cacheSlot = _nextPlaceholderCacheSlot++;
@@ -145,6 +146,7 @@ namespace NTDLS.ExpressionParser
             return cacheSlot;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public string StorePlaceholderCacheItem(double? value, bool isVariable = false)
         {
             var cacheSlot = ConsumeNextPlaceholderCacheSlot(out var cacheKey);
@@ -162,6 +164,8 @@ namespace NTDLS.ExpressionParser
 
             return cacheKey;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
 
         public PlaceholderCacheItem GetPlaceholderCacheItem(ReadOnlySpan<char> span)
         {

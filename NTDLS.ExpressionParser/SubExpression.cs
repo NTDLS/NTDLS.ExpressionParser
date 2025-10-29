@@ -105,20 +105,20 @@ namespace NTDLS.ExpressionParser
 
                 if (foundNull)
                 {
-                    StorePreComputed(functionStartIndex, functionEndIndex, null);
+                    StorePlaceholder(functionStartIndex, functionEndIndex, null);
                     return true;
                 }
                 else if (Utility.IsNativeFunction(foundFunction))
                 {
                     double functionResult = Utility.ComputeNativeFunction(foundFunction, parameters.ToArray());
-                    StorePreComputed(functionStartIndex, functionEndIndex, functionResult);
+                    StorePlaceholder(functionStartIndex, functionEndIndex, functionResult);
                 }
                 else
                 {
                     if (_parentExpression.ExpressionFunctions.TryGetValue(foundFunction, out var customFunction))
                     {
                         var functionResult = customFunction.Invoke(parameters.ToArray()) ?? _parentExpression.Options.DefaultNullValue;
-                        StorePreComputed(functionStartIndex, functionEndIndex, functionResult);
+                        StorePlaceholder(functionStartIndex, functionEndIndex, functionResult);
                     }
                     else
                     {
@@ -156,62 +156,17 @@ namespace NTDLS.ExpressionParser
                 //Pre-first-order:
                 while ((operatorIndex = GetFreestandingNotOperation(out _)) != -1)
                 {
-                    if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
-                    {
-                        StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
-                    }
-                    else
-                    {
-                        var rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength, out bool isOperationCacheable);
-                        int? calculatedResult = rightValue == null ? null : (rightValue == 0) ? 1 : 0;
-                        StorePreComputed(operatorIndex, operatorIndex + outParsedLength, calculatedResult);
+                    var rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength, out bool isOperationCacheable);
+                    int? calculatedResult = rightValue == null ? null : (rightValue == 0) ? 1 : 0;
 
-                        if (isCacheable && isOperationCacheable)
-                        {
-                            var parsedNumber = new ComputedStepItem
-                            {
-                                ParsedValue = calculatedResult,
-                                BeginPosition = operatorIndex,
-                                EndPosition = operatorIndex + outParsedLength
-                            };
-                            _parentExpression.State.StoreComputedStep(parsedNumber);
-                        }
-                        else
-                        {
-                            _parentExpression.State.IncrementComputedStep();
-                        }
-                    }
+                    StorePlaceholder(operatorIndex, operatorIndex + outParsedLength, calculatedResult);
                 }
 
                 //First order operations:
                 operatorIndex = GetIndexOfOperation(Utility.FirstOrderOperations, out string operation);
                 if (operatorIndex > 0)
                 {
-                    var calculatedResult = GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isOperationCacheable);
-
-                    if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
-                    {
-                        StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
-                    }
-                    else
-                    {
-                        StorePreComputed(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable && isOperationCacheable)
-                        {
-                            var parsedNumber = new ComputedStepItem
-                            {
-                                ParsedValue = calculatedResult,
-                                BeginPosition = beginPosition,
-                                EndPosition = endPosition
-                            };
-                            _parentExpression.State.StoreComputedStep(parsedNumber);
-                        }
-                        else
-                        {
-                            _parentExpression.State.IncrementComputedStep();
-                        }
-                    }
-
+                    CollapseRightAndLeft(operation, operatorIndex);
                     continue;
                 }
 
@@ -219,30 +174,7 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.SecondOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    var calculatedResult = GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isOperationCacheable);
-
-                    if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
-                    {
-                        StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
-                    }
-                    else
-                    {
-                        StorePreComputed(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable && isOperationCacheable)
-                        {
-                            var parsedNumber = new ComputedStepItem
-                            {
-                                ParsedValue = calculatedResult,
-                                BeginPosition = beginPosition,
-                                EndPosition = endPosition
-                            };
-                            _parentExpression.State.StoreComputedStep(parsedNumber);
-                        }
-                        else
-                        {
-                            _parentExpression.State.IncrementComputedStep();
-                        }
-                    }
+                    CollapseRightAndLeft(operation, operatorIndex);
                     continue;
                 }
 
@@ -250,30 +182,7 @@ namespace NTDLS.ExpressionParser
                 operatorIndex = GetIndexOfOperation(Utility.ThirdOrderOperations, out operation);
                 if (operatorIndex > 0)
                 {
-                    var calculatedResult = GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isOperationCacheable);
-
-                    if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
-                    {
-                        StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
-                    }
-                    else
-                    {
-                        StorePreComputed(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable && isOperationCacheable)
-                        {
-                            var parsedNumber = new ComputedStepItem
-                            {
-                                ParsedValue = calculatedResult,
-                                BeginPosition = beginPosition,
-                                EndPosition = endPosition
-                            };
-                            _parentExpression.State.StoreComputedStep(parsedNumber);
-                        }
-                        else
-                        {
-                            _parentExpression.State.IncrementComputedStep();
-                        }
-                    }
+                    CollapseRightAndLeft(operation, operatorIndex);
                     continue;
                 }
 
@@ -289,7 +198,7 @@ namespace NTDLS.ExpressionParser
             return _parentExpression.State.StorePlaceholderCacheItem(_parentExpression.StringToDouble(Text));
         }
 
-        internal void StorePreComputed(int startIndex, int endIndex, double? value)
+        internal void StorePlaceholder(int startIndex, int endIndex, double? value)
         {
             var cacheKey = _parentExpression.State.StorePlaceholderCacheItem(value);
             Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);
@@ -310,26 +219,43 @@ namespace NTDLS.ExpressionParser
         /// Gets the numbers to the left and right of an operator.
         /// Returns FALSE when NULL is found for either value.
         /// </summary>
-        private double? GetLeftAndRightValues(string operation,
-            int operationBeginIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isCacheable)
+        private void CollapseRightAndLeft(string operation, int operationBeginIndex)
         {
             var left = GetLeftValue(operationBeginIndex, out int leftParsedLength, out bool isLeftCacheable);
             var right = GetRightValue(operationBeginIndex + operation.Length, out int rightParsedLength, out bool isRightCacheable);
 
-            leftValue = left ?? 0;
-            rightValue = right ?? 0;
+            var beginPosition = operationBeginIndex - leftParsedLength;
+            var endPosition = operationBeginIndex + rightParsedLength + (operation.Length - 1);
 
-            beginPosition = operationBeginIndex - leftParsedLength;
-            endPosition = operationBeginIndex + rightParsedLength + (operation.Length - 1);
-
-            isCacheable = isLeftCacheable && isRightCacheable;
-
-            if (left != null && right != null)
+            if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
             {
-                return Utility.ComputePrivative(leftValue, operation, rightValue);
+                StorePlaceholder(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
             }
+            else
+            {
+                double? result = null;
 
-            return null;
+                if (left != null && right != null)
+                {
+                    result = Utility.ComputePrivative(left ?? 0, operation, right ?? 0);
+                }
+
+                StorePlaceholder(beginPosition, endPosition, result);
+                if (isLeftCacheable && isRightCacheable)
+                {
+                    var parsedNumber = new ComputedStepItem
+                    {
+                        ParsedValue = result,
+                        BeginPosition = beginPosition,
+                        EndPosition = endPosition
+                    };
+                    _parentExpression.State.StoreComputedStep(parsedNumber);
+                }
+                else
+                {
+                    _parentExpression.State.IncrementComputedStep();
+                }
+            }
         }
 
         private double? GetLeftValue(int operationIndex, out int outParsedLength, out bool isCacheable)
@@ -357,7 +283,7 @@ namespace NTDLS.ExpressionParser
                     outParsedLength = (operationIndex - i) - 1;
                     var cacheKey = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(cacheKey);
-                    isCacheable = false;
+                    isCacheable = !cachedItem.IsVariable;
                     _parentExpression.State.IncrementScanStep();
                     return cachedItem.ComputedValue;
                 }
@@ -419,7 +345,7 @@ namespace NTDLS.ExpressionParser
                     i++;
                     outParsedLength = i;
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span.Slice(1, i - 2));
-                    isCacheable = false;
+                    isCacheable = !cachedItem.IsVariable;
                     _parentExpression.State.IncrementScanStep();
                     return cachedItem.ComputedValue;
                 }

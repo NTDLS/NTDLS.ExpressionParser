@@ -29,7 +29,7 @@ namespace TestHarness
 
         static void Main()
         {
-            var expression = new Expression("1+2+3");
+            var expression = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
             Console.WriteLine("---FIRST---");
             Console.WriteLine(expression.Evaluate()); //20
             Console.WriteLine("---SECOND---");
