@@ -14,17 +14,76 @@ namespace TestHarness
 
         static void Main()
         {
-            var expr = new Expression("v1");
+            //OptNull = null
+            {
+                var expression = new Expression("10 * ((5 + extra + CustomSum(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10");
 
-            expr.SetParameter("v1", 12345);
-            Console.WriteLine(expr.Evaluate());
-            expr.SetParameter("v1", 12345);
-            Console.WriteLine(expr.Evaluate());
-            expr.SetParameter("v1", 12345);
-            Console.WriteLine(expr.Evaluate());
-            expr.SetParameter("v1", 12345);
-            Console.WriteLine(expr.Evaluate());
+                expression.SetParameter("extra", 1000);
 
+                expression.AddFunction("CustomSum", parameters =>
+                {
+                    return null;
+                });
+
+                if (expression.Evaluate() == null)
+                {
+                    Console.WriteLine("Expected");
+                }
+                else
+                {
+                    throw new Exception("Unexpected result");
+                }
+            }
+            //OptNull = 0
+            {
+                var options = new ExpressionOptions()
+                {
+                    DefaultNullValue = 0
+                };
+
+                var expression = new Expression("10 * ((5 + extra + CustomSum(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10", options);
+
+                expression.SetParameter("extra", 1000);
+
+                expression.AddFunction("CustomSum", parameters =>
+                {
+                    return null;
+                });
+
+                if (expression.Evaluate() == 5086050)
+                {
+                    Console.WriteLine("Expected");
+                }
+                else
+                {
+                    throw new Exception("Unexpected result");
+                }
+            }
+            //OptNull = 1
+            {
+                var options = new ExpressionOptions()
+                {
+                    DefaultNullValue = 1
+                };
+
+                var expression = new Expression("10 * ((5 + extra + CustomSum(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10", options);
+
+                expression.SetParameter("extra", 1000);
+
+                expression.AddFunction("CustomSum", parameters =>
+                {
+                    return null;
+                });
+
+                if (expression.Evaluate() == 5091050)
+                {
+                    Console.WriteLine("Expected");
+                }
+                else
+                {
+                    throw new Exception("Unexpected result");
+                }
+            }
 
             //EvalPrint("10");
             //EvalPrint("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");

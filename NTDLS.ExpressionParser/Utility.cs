@@ -158,6 +158,20 @@ namespace NTDLS.ExpressionParser
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int FastHash(string text, int optionsHash)
+        {
+            unchecked
+            {
+                int hash = 17;
+                for (int i = 0; i < text.Length; i++)
+                    hash = hash * 31 + text[i];
+
+                hash = hash * 31 + optionsHash;
+                return hash;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int ComputeIntegerExclusivePrimitive(int leftValue, string operation, int rightValue)
         {
             return operation switch

@@ -1,6 +1,9 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace NTDLS.ExpressionParser
 {
@@ -15,6 +18,7 @@ namespace NTDLS.ExpressionParser
         private int _operationCount = 0;
         private PreParsedCacheItem?[] _preParsedCache = [];
         private readonly ExpressionOptions _options;
+        private bool _isPreParsedCacheHydrated = false;
 
         public ExpressionState(Sanitized sanitized, ExpressionOptions options)
         {
@@ -121,6 +125,29 @@ namespace NTDLS.ExpressionParser
 
         #endregion
 
+        public void HydrateTemplateParsedCache(int expressionHash)
+        {
+            if (!_isPreParsedCacheHydrated)
+            {
+                lock (this)
+                {
+                    if (!_isPreParsedCacheHydrated)
+                    {
+                        if (Utility.PersistentCaches.TryGetValue(expressionHash, out CachedState? entry) && entry != null)
+                        {
+                            entry.State.HydratePreParsedCache(_preParsedCache);
+                        }
+                        _isPreParsedCacheHydrated = true;
+                    }
+                }
+            }
+        }
+
+        private void HydratePreParsedCache(PreParsedCacheItem?[] populatedCache)
+        {
+            Interlocked.Exchange(ref _preParsedCache, populatedCache);
+        }
+
         public void Reset(Sanitized sanitized)
         {
             _nextPreComputedCacheSlot = sanitized.ConsumedPreComputedCacheSlots;
@@ -136,11 +163,12 @@ namespace NTDLS.ExpressionParser
                 _nextPreComputedCacheSlot = _nextPreComputedCacheSlot,
                 _preComputedCache = new PreComputedCacheItem[_preComputedCache.Length],
                 _preParsedCache = new PreParsedCacheItem?[_preParsedCache.Length],
-                _nextPreParsedCacheSlot = 0
+                _nextPreParsedCacheSlot = 0,
+                _isPreParsedCacheHydrated = _isPreParsedCacheHydrated
             };
 
             Array.Copy(_preComputedCache, clone._preComputedCache, _preComputedCache.Length); //Copy any pre-computed NULLs.
-            //Array.Copy(_preParsedCache, clone._preParsedCache, _preParsedCache.Length);
+            Array.Copy(_preParsedCache, clone._preParsedCache, _preParsedCache.Length);
 
             return clone;
         }

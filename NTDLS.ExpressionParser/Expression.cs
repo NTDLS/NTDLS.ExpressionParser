@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -18,6 +19,8 @@ namespace NTDLS.ExpressionParser
         internal ExpressionOptions Options { get; set; }
         internal Dictionary<string, ExpressionFunction> ExpressionFunctions { get; private set; } = new();
 
+        private readonly int _expressionHash = 0;
+
         #region ~/ctor and Sanitize.
 
         /// <summary>
@@ -30,9 +33,9 @@ namespace NTDLS.ExpressionParser
 
             if (Options.UseCompileCache)
             {
-                var expressionHash = HashCode.Combine(text, Options);
+                _expressionHash = Utility.FastHash(text, Options.OptionsHash());
 
-                var cached = Utility.PersistentCaches.GetOrCreate(expressionHash, entry =>
+                var cached = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
                 {
                     entry.SlidingExpiration = TimeSpan.FromMinutes(5);
 
@@ -54,6 +57,8 @@ namespace NTDLS.ExpressionParser
             }
         }
 
+
+
         #endregion
 
         #region Evaluate.
@@ -66,22 +71,26 @@ namespace NTDLS.ExpressionParser
             State.Reset(Sanitized);
             State.ApplyParameters(Sanitized, _definedParameters);
 
+            bool isCacheable = ExpressionFunctions.Count == 0;
+
             bool isComplete;
             do
             {
                 //Get a sub-expression from the whole expression.
                 isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
                 //Compute the sub-expression.
-                var resultString = subExpression.Compute();
+                var resultString = subExpression.Compute(isCacheable);
                 //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
                 State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
 
             if (State.WorkingText[0] == '$')
             {
+                State.HydrateTemplateParsedCache(_expressionHash);
                 return State.GetPreComputedCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
+            State.HydrateTemplateParsedCache(_expressionHash);
             return StringToDouble(State.WorkingText);
         }
 
@@ -98,6 +107,8 @@ namespace NTDLS.ExpressionParser
 
             work.AppendLine("{");
 
+            bool isCacheable = ExpressionFunctions.Count == 0;
+
             bool isComplete;
             do
             {
@@ -108,7 +119,7 @@ namespace NTDLS.ExpressionParser
                 work.Append("    " + friendlySubExpression);
 
                 //Compute the sub-expression.
-                var resultString = subExpression.Compute();
+                var resultString = subExpression.Compute(isCacheable);
 
                 work.AppendLine($" = {SwapInCacheValues(resultString)}");
 
@@ -121,10 +132,13 @@ namespace NTDLS.ExpressionParser
             if (State.WorkingText[0] == '$')
             {
                 showWork = work.ToString();
+                State.HydrateTemplateParsedCache(_expressionHash);
                 return State.GetPreComputedCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
             }
 
             showWork = work.ToString();
+
+            State.HydrateTemplateParsedCache(_expressionHash);
             return StringToDouble(State.WorkingText);
         }
 

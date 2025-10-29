@@ -37,6 +37,11 @@ namespace NTDLS.ExpressionParser
             return foundIndex;
         }
 
+        /// <summary>
+        /// Processes all functions in the expression, return true if any function was found - otherwise returns false.
+        /// </summary>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
         private bool ProcessFunctionCall()
         {
             int functionStartIndex = GetStartingIndexOfLastFunctionCall(out string foundFunction);
@@ -59,7 +64,7 @@ namespace NTDLS.ExpressionParser
                     if (Text[i] == ',')
                     {
                         var subExpression = new SubExpression(_parentExpression, _buffer.ToString());
-                        subExpression.Compute();
+                        subExpression.Compute(true);
 
                         var param = _parentExpression.StringToDouble(subExpression.Text);
                         foundNull = foundNull || param == null;
@@ -83,14 +88,11 @@ namespace NTDLS.ExpressionParser
                         }
 
                         var subExpression = new SubExpression(_parentExpression, _buffer.ToString());
-                        subExpression.Compute();
+                        subExpression.Compute(true);
 
                         var param = _parentExpression.StringToDouble(subExpression.Text);
-                        if (param != null)
-                        {
-                            foundNull = foundNull || param == null;
-                            parameters.Add(param ?? 0);
-                        }
+                        foundNull = foundNull || param == null;
+                        parameters.Add(param ?? 0);
                         break;
                     }
                     else
@@ -103,20 +105,20 @@ namespace NTDLS.ExpressionParser
 
                 if (foundNull)
                 {
-                    SwapInCacheKey(functionStartIndex, functionEndIndex, null);
+                    StorePreComputed(functionStartIndex, functionEndIndex, null);
                     return true;
                 }
                 else if (Utility.IsNativeFunction(foundFunction))
                 {
                     double functionResult = Utility.ComputeNativeFunction(foundFunction, parameters.ToArray());
-                    SwapInCacheKey(functionStartIndex, functionEndIndex, functionResult);
+                    StorePreComputed(functionStartIndex, functionEndIndex, functionResult);
                 }
                 else
                 {
                     if (_parentExpression.ExpressionFunctions.TryGetValue(foundFunction, out var customFunction))
                     {
                         var functionResult = customFunction.Invoke(parameters.ToArray()) ?? _parentExpression.Options.DefaultNullValue;
-                        SwapInCacheKey(functionStartIndex, functionEndIndex, functionResult);
+                        StorePreComputed(functionStartIndex, functionEndIndex, functionResult);
                     }
                     else
                     {
@@ -130,7 +132,7 @@ namespace NTDLS.ExpressionParser
             return false;
         }
 
-        internal string Compute()
+        internal string Compute(bool isCacheable)
         {
             TruncateParenthesizes();
 
@@ -139,7 +141,17 @@ namespace NTDLS.ExpressionParser
                 int operatorIndex;
 
                 //Process all function calls from right-to-left.
-                while (ProcessFunctionCall()) { }
+                while (true)
+                {
+                    if (ProcessFunctionCall())
+                    {
+                        isCacheable = false;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
 
                 //Pre-first-order:
                 while ((operatorIndex = GetFreestandingNotOperation(out _)) != -1)
@@ -148,19 +160,19 @@ namespace NTDLS.ExpressionParser
 
                     if (_parentExpression.State.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
-                        SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
+                        StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
                     else
                     {
-                        var rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength, out bool isCacheable);
-                        int notResult = (rightValue == 0) ? 1 : 0;
-                        SwapInCacheKey(operatorIndex, operatorIndex + outParsedLength, notResult);
+                        var rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength, out bool isOperCacheable);
+                        int? calculatedResult = rightValue == null ? null : (rightValue == 0) ? 1 : 0;
+                        StorePreComputed(operatorIndex, operatorIndex + outParsedLength, calculatedResult);
 
-                        if (isCacheable)
+                        if (isCacheable && isOperCacheable)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
-                                ParsedValue = notResult,
+                                ParsedValue = calculatedResult,
                                 BeginPosition = operatorIndex,
                                 EndPosition = operatorIndex + outParsedLength
                             };
@@ -177,18 +189,18 @@ namespace NTDLS.ExpressionParser
 
                     if (_parentExpression.State.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
-                        SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
+                        StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
                     else
                     {
                         double? calculatedResult = null;
-                        if (GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isCacheable))
+                        if (GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isOperCacheable))
                         {
                             calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                         }
 
-                        SwapInCacheKey(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable)
+                        StorePreComputed(beginPosition, endPosition, calculatedResult);
+                        if (isCacheable && isOperCacheable)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -211,18 +223,18 @@ namespace NTDLS.ExpressionParser
 
                     if (_parentExpression.State.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
-                        SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
+                        StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
                     else
                     {
                         double? calculatedResult = null;
-                        if (GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isCacheable))
+                        if (GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isOperCacheable))
                         {
                             calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                         }
 
-                        SwapInCacheKey(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable)
+                        StorePreComputed(beginPosition, endPosition, calculatedResult);
+                        if (isCacheable && isOperCacheable)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -244,19 +256,19 @@ namespace NTDLS.ExpressionParser
 
                     if (_parentExpression.State.TryGetPreParsedCache(preParsedCacheSlot, out PreParsedCacheItem cachedObj))
                     {
-                        SwapInCacheKey(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
+                        StorePreComputed(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue);
                     }
                     else
                     {
                         double? calculatedResult = null;
 
-                        if (GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isCacheable))
+                        if (GetLeftAndRightValues(operation, operatorIndex, out double leftValue, out double rightValue, out int beginPosition, out int endPosition, out bool isOperCacheable))
                         {
                             calculatedResult = Utility.ComputePrivative(leftValue, operation, rightValue);
                         }
 
-                        SwapInCacheKey(beginPosition, endPosition, calculatedResult);
-                        if (isCacheable)
+                        StorePreComputed(beginPosition, endPosition, calculatedResult);
+                        if (isCacheable && isOperCacheable)
                         {
                             var parsedNumber = new PreParsedCacheItem
                             {
@@ -282,7 +294,7 @@ namespace NTDLS.ExpressionParser
             return _parentExpression.State.StorePreComputedCacheItem(_parentExpression.StringToDouble(Text));
         }
 
-        internal void SwapInCacheKey(int startIndex, int endIndex, double? value)
+        internal void StorePreComputed(int startIndex, int endIndex, double? value)
         {
             var cacheKey = _parentExpression.State.StorePreComputedCacheItem(value);
             Text = _parentExpression.ReplaceRange(Text, startIndex, endIndex, cacheKey);

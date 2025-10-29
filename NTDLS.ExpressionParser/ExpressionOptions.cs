@@ -28,14 +28,14 @@
         /// <summary>
         /// Returns a hash code for the current object based on its configuration properties.
         /// </summary>
-        public override int GetHashCode()
+        public int OptionsHash()
         {
             int hash = 17;
-            hash = hash * 31 + UseCompileCache.GetHashCode();
-            hash = hash * 31 + UseFastFloatingPointParser.GetHashCode();
-            hash = hash * 31 + Precision.GetHashCode();
+            hash = hash * 31 + (UseCompileCache ? 1 : 0);
+            hash = hash * 31 + (UseFastFloatingPointParser ? 1 : 0);
+            hash = hash * 31 + Precision;
             hash = hash * 31 + (DefaultNullValue.HasValue ? 1 : 2);
-            hash = hash * 31 + ((DefaultNullValue?.GetHashCode()) ?? 0);
+            hash = hash * 31 + (int)(DefaultNullValue ?? 0);
             return hash;
         }
     }
