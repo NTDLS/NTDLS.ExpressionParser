@@ -7,7 +7,6 @@
 
     internal struct ComputedStepItem
     {
-        public bool IsValid;
         public double? ParsedValue;
         public int BeginPosition;
         public int EndPosition;
@@ -15,7 +14,6 @@
 
     internal struct ScanStepItem
     {
-        public bool IsValid;
         public double? Value;
         public int Length;
     }

@@ -226,7 +226,7 @@ namespace NTDLS.ExpressionParser
 
             isUserVariableDerived = isLeftUserVariableDerived || isRightUserVariableDerived;
 
-            if (_parentExpression.State.TryGetComputedStep(out ComputedStepItem cachedObj))
+            if (_parentExpression.State.ComputedStepCache.TryGet(out ComputedStepItem cachedObj))
             {
                 StorePlaceholder(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue, isUserVariableDerived);
             }
@@ -248,18 +248,18 @@ namespace NTDLS.ExpressionParser
                         BeginPosition = beginPosition,
                         EndPosition = endPosition
                     };
-                    _parentExpression.State.StoreComputedStep(parsedNumber);
+                    _parentExpression.State.ComputedStepCache.Store(parsedNumber, true);
                 }
                 else
                 {
-                    _parentExpression.State.IncrementComputedStep();
+                    _parentExpression.State.ComputedStepCache.Store(new(), false);
                 }
             }
         }
 
         private double? GetLeftValue(int operationIndex, out int outParsedLength, out bool isUserVariableDerived)
         {
-            if (_parentExpression.State.TryGetScanStep(out var cachedObj))
+            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj))
             {
                 outParsedLength = cachedObj.Length;
                 isUserVariableDerived = false;
@@ -284,12 +284,11 @@ namespace NTDLS.ExpressionParser
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(cacheKey);
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
 
-                    _parentExpression.State.StoreScanStep(new ScanStepItem
+                    _parentExpression.State.ScanStepCache.Store(new ScanStepItem
                     {
                         Value = cachedItem.ComputedValue,
                         Length = outParsedLength,
-                        IsValid = !isUserVariableDerived
-                    });
+                    }, !isUserVariableDerived);
 
                     return cachedItem.ComputedValue;
                 }
@@ -315,12 +314,11 @@ namespace NTDLS.ExpressionParser
                     outParsedLength = (operationIndex - i) - 1;
                     var result = _parentExpression.StringToDouble(span.Slice(operationIndex - outParsedLength, outParsedLength), out isUserVariableDerived);
 
-                    _parentExpression.State.StoreScanStep(new ScanStepItem
+                    _parentExpression.State.ScanStepCache.Store(new ScanStepItem
                     {
                         Value = result,
                         Length = outParsedLength,
-                        IsValid = true
-                    });
+                    }, true);
 
                     return result;
                 }
@@ -329,7 +327,7 @@ namespace NTDLS.ExpressionParser
 
         private double? GetRightValue(int endOfOperationIndex, out int outParsedLength, out bool isUserVariableDerived)
         {
-            if (_parentExpression.State.TryGetScanStep(out var cachedObj))
+            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj))
             {
                 outParsedLength = cachedObj.Length;
                 isUserVariableDerived = false;
@@ -353,12 +351,11 @@ namespace NTDLS.ExpressionParser
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span.Slice(1, i - 2));
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
 
-                    _parentExpression.State.StoreScanStep(new ScanStepItem
+                    _parentExpression.State.ScanStepCache.Store(new ScanStepItem
                     {
                         Value = cachedItem.ComputedValue,
                         Length = outParsedLength,
-                        IsValid = !isUserVariableDerived
-                    });
+                    }, !isUserVariableDerived);
 
                     return cachedItem.ComputedValue;
                 }
@@ -377,12 +374,11 @@ namespace NTDLS.ExpressionParser
                     outParsedLength = i;
                     var result = _parentExpression.StringToDouble(span.Slice(0, i), out isUserVariableDerived);
 
-                    _parentExpression.State.StoreScanStep(new ScanStepItem
+                    _parentExpression.State.ScanStepCache.Store(new ScanStepItem
                     {
                         Value = result,
                         Length = outParsedLength,
-                        IsValid = true
-                    });
+                    }, true);
 
                     return result;
                 }
