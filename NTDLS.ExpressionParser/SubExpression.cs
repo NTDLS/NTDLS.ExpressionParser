@@ -283,7 +283,14 @@ namespace NTDLS.ExpressionParser
                     var cacheKey = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(cacheKey);
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
-                    _parentExpression.State.IncrementScanStep();
+
+                    _parentExpression.State.StoreScanStep(new ScanStepItem
+                    {
+                        Value = cachedItem.ComputedValue,
+                        Length = outParsedLength,
+                        IsValid = !isUserVariableDerived
+                    });
+
                     return cachedItem.ComputedValue;
                 }
                 else
@@ -311,7 +318,8 @@ namespace NTDLS.ExpressionParser
                     _parentExpression.State.StoreScanStep(new ScanStepItem
                     {
                         Value = result,
-                        Length = outParsedLength
+                        Length = outParsedLength,
+                        IsValid = true
                     });
 
                     return result;
@@ -344,7 +352,14 @@ namespace NTDLS.ExpressionParser
                     outParsedLength = i;
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span.Slice(1, i - 2));
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
-                    _parentExpression.State.IncrementScanStep();
+
+                    _parentExpression.State.StoreScanStep(new ScanStepItem
+                    {
+                        Value = cachedItem.ComputedValue,
+                        Length = outParsedLength,
+                        IsValid = !isUserVariableDerived
+                    });
+
                     return cachedItem.ComputedValue;
                 }
                 else
@@ -365,7 +380,8 @@ namespace NTDLS.ExpressionParser
                     _parentExpression.State.StoreScanStep(new ScanStepItem
                     {
                         Value = result,
-                        Length = outParsedLength
+                        Length = outParsedLength,
+                        IsValid = true
                     });
 
                     return result;

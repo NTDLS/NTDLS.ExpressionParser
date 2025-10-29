@@ -81,18 +81,7 @@ namespace NTDLS.ExpressionParser
             {
                 Array.Resize(ref _scanStep, (_scanStep.Length + 1) * 2);
             }
-            value.IsValid = true;
             _scanStep[_consumedScanStepSlots++] = value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void IncrementScanStep()
-        {
-            if (_consumedScanStepSlots >= _scanStep.Length) //Resize the cache if needed.
-            {
-                Array.Resize(ref _scanStep, (_scanStep.Length + 1) * 2);
-            }
-            _scanStep[_consumedScanStepSlots++] = new ScanStepItem() { IsValid = false };
         }
 
         #endregion

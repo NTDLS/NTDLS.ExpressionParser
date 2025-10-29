@@ -14,11 +14,12 @@ namespace TestHarness
 
         static void Baseline()
         {
+            var expression = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10"); //71.8829
+
             var stopwatch = Stopwatch.StartNew();
             for (int i = 0; i < 100000; i++)
             {
-                var expression = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10"); //71.8829
-                expression.Evaluate(); //559.4445
+                expression.Evaluate(); //522.17
 
             }
             stopwatch.Stop();
@@ -29,6 +30,8 @@ namespace TestHarness
 
         static void Main()
         {
+            Baseline();
+            /*
             var expression = new Expression("10 * ((5 + extra + CustomSum(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10");
 
             expression.SetParameter("extra", 1000);
@@ -39,7 +42,7 @@ namespace TestHarness
             });
 
             Console.WriteLine(expression.Evaluate()?.ToString() ?? "{NULL}");
-
+            */
             //var expression = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
             //Console.WriteLine("---FIRST---");
             //Console.WriteLine(expression.Evaluate()); //20
