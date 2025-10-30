@@ -7,7 +7,10 @@ namespace NTDLS.ExpressionParser
     {
         private int _utilized = 0;
         private int _next = 0;
-        private VisitorCacheContainer<T>[] _items = new VisitorCacheContainer<T>[initialCapacity];
+        private T[] _items = new T[initialCapacity];
+
+        public int Utilized => _utilized;
+        public int Allocated => _items.Length;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Reset()
@@ -15,25 +18,17 @@ namespace NTDLS.ExpressionParser
             _next = 0;
         }
 
-        public ref VisitorCacheContainer<T> this[int index]
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get
-            {
-                if (index < 0 || index >= _utilized)
-                    throw new IndexOutOfRangeException();
-
-                return ref _items[index];
-            }
-        }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void CopyTo(VisitorCache<T> target)
+        public void CopyFrom(VisitorCache<T> source)
         {
-            for (int i = 0; i < _utilized; i++)
+            _items = new T[source.Utilized];
+
+            for (int i = 0; i < source.Utilized; i++)
             {
-                target.Store(i,_items[i]);
+                _items[i] = source._items[i];
             }
+            _utilized = source._utilized;
+            _next = source._next;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -42,18 +37,8 @@ namespace NTDLS.ExpressionParser
             if (_next < _utilized)
             {
                 cacheIndex = _next++;
-
-                if (cacheIndex > _utilized)
-                {
-                    _utilized = cacheIndex;
-                }
-                if (cacheIndex >= _items.Length)
-                {
-                    Array.Resize(ref _items, (cacheIndex + 1) * 2);
-                }
-
-                value = _items[cacheIndex].Value;
-                return _items[cacheIndex].IsValid;
+                value = _items[cacheIndex];
+                return true;
             }
             cacheIndex = _next++;
             value = default;
@@ -63,13 +48,10 @@ namespace NTDLS.ExpressionParser
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public T StoreInvalid(int cacheIndex)
         {
-            if (cacheIndex > _utilized)
-            {
-                _utilized = cacheIndex;
-            }
+            _utilized++;
             if (cacheIndex >= _items.Length)
             {
-                Array.Resize(ref _items, (cacheIndex + 1) * 2);
+                Array.Resize(ref _items, cacheIndex + 1);
             }
 
             _items[cacheIndex] = default;
@@ -77,32 +59,14 @@ namespace NTDLS.ExpressionParser
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T Store(int cacheIndex, T value, bool isValid)
+        public T Store(int cacheIndex, T value)
         {
-            if (cacheIndex > _utilized)
-            {
-                _utilized = cacheIndex;
-            }
+            _utilized++;
             if (cacheIndex >= _items.Length)
             {
-                Array.Resize(ref _items, (cacheIndex + 1) * 2);
+                Array.Resize(ref _items, cacheIndex + 1);
             }
 
-            _items[cacheIndex] = new VisitorCacheContainer<T>(value, isValid);
-            return value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public VisitorCacheContainer<T> Store(int cacheIndex, VisitorCacheContainer<T> value)
-        {
-            if (cacheIndex > _utilized)
-            {
-                _utilized = cacheIndex;
-            }
-            if (cacheIndex >= _items.Length)
-            {
-                Array.Resize(ref _items, (cacheIndex+ 1) * 2);
-            }
             _items[cacheIndex] = value;
             return value;
         }

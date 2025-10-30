@@ -29,7 +29,8 @@ namespace TestHarness
 
         static void Main()
         {
-            Baseline();
+            //EvalPrint("!0");
+            //Baseline();
 
             //Environment.Exit(0);
 
@@ -46,7 +47,7 @@ namespace TestHarness
             //expression.SetParameter("extra", 20);
             //Console.WriteLine(expression.Evaluate()); //211750
 
-//#if !DEBUG
+            //#if !DEBUG
             var timings = new List<double>();
 
             for (int i = 0; i < 20; i++)
@@ -63,7 +64,7 @@ namespace TestHarness
             double avg = timings.Average();
             double stdDev = Math.Sqrt(timings.Select(t => Math.Pow(t - avg, 2)).Average());
             Console.WriteLine($"Best: {timings.Min():n2}, Worst: {timings.Max():n2}, Avg: {avg:n2}, StdDev: {stdDev:n2}");
-//#endif
+            //#endif
         }
 
         static double Perform(string expr, int iterations)
@@ -75,7 +76,7 @@ namespace TestHarness
             var stopwatch = Stopwatch.StartNew();
             for (int i = 0; i < iterations; i++)
             {
-                if (expression.Evaluate() != 6140750)//Typically takes ~0.9µs.
+                if (expression.Evaluate() != 6140750) //Typically takes ~0.9µs.
                 {
                     throw new Exception("Unexpected result");
                 }

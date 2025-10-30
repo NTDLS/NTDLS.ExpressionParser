@@ -30,8 +30,8 @@ namespace NTDLS.ExpressionParser
             _nextPlaceholderCacheSlot = sanitized.ConsumedPlaceholderCacheSlots;
             _placeholderCache = new PlaceholderCacheItem[sanitized.OperationCount];
 
-            ScanStepCache = new(_operationCount * 3);
-            ComputedStepCache = new(_operationCount * 3);
+            ScanStepCache = new(_operationCount);
+            ComputedStepCache = new(_operationCount);
             OperationStepCache = new(_operationCount);
 
             for (int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
@@ -45,12 +45,13 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        public ExpressionState(ExpressionOptions options, int operationCount, int preAllocation)
+        public ExpressionState(ExpressionOptions options, int operationCount, int preAllocation,
+            int computedStepCacheAllocated, int scanStepCacheAllocated, int operationStepCacheAllocated)
         {
             Buffer = new StringBuilder(preAllocation);
-            ScanStepCache = new(operationCount * 3);
-            ComputedStepCache = new(operationCount * 3);
-            OperationStepCache = new(operationCount);
+            ScanStepCache = new(scanStepCacheAllocated);
+            ComputedStepCache = new(computedStepCacheAllocated);
+            OperationStepCache = new(operationStepCacheAllocated);
             _options = options;
         }
 
@@ -111,9 +112,9 @@ namespace NTDLS.ExpressionParser
                     {
                         if (Utility.PersistentCaches.TryGetValue(expressionHash, out CachedState? entry) && entry != null)
                         {
-                            ComputedStepCache.CopyTo(entry.State.ComputedStepCache);
-                            ScanStepCache.CopyTo(entry.State.ScanStepCache);
-                            OperationStepCache.CopyTo(entry.State.OperationStepCache);
+                            entry.State.ComputedStepCache.CopyFrom(ComputedStepCache);
+                            entry.State.ScanStepCache.CopyFrom(ScanStepCache);
+                            entry.State.OperationStepCache.CopyFrom(OperationStepCache);
                         }
                         _isTemplateCacheHydrated = true;
                     }
@@ -132,7 +133,10 @@ namespace NTDLS.ExpressionParser
 
         public ExpressionState Clone(Sanitized sanitized)
         {
-            var clone = new ExpressionState(_options, sanitized.OperationCount, WorkingText.Length * 2)
+            var clone = new ExpressionState(_options, sanitized.OperationCount, WorkingText.Length * 2,
+                Math.Max(ComputedStepCache.Allocated, _operationCount),
+                Math.Max(ScanStepCache.Allocated, _operationCount),
+                Math.Max(OperationStepCache.Allocated, _operationCount))
             {
                 WorkingText = WorkingText,
                 _operationCount = _operationCount,
@@ -141,9 +145,9 @@ namespace NTDLS.ExpressionParser
                 _isTemplateCacheHydrated = _isTemplateCacheHydrated
             };
 
-            ComputedStepCache.CopyTo(clone.ComputedStepCache);
-            ScanStepCache.CopyTo(clone.ScanStepCache);
-            OperationStepCache.CopyTo(clone.OperationStepCache);
+            clone.ComputedStepCache.CopyFrom(ComputedStepCache);
+            clone.ScanStepCache.CopyFrom(ScanStepCache);
+            clone.OperationStepCache.CopyFrom(OperationStepCache);
 
             for (int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
             {

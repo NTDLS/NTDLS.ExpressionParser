@@ -10,19 +10,22 @@
         public double? ParsedValue;
         public int BeginPosition;
         public int EndPosition;
+        public bool IsValid;
     }
 
     internal struct OperationStepItem
     {
         public string Operation;
         public int Index;
-        public bool Found;
+        public bool IsValid;
+        public string DEBUG;
     }
 
     internal struct ScanStepItem
     {
         public double? Value;
         public int Length;
+        public bool IsValid;
     }
 
     internal struct PlaceholderCacheItem
