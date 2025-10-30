@@ -29,25 +29,27 @@ namespace TestHarness
 
         static void Main()
         {
-            //EvalPrint("!0");
-            //Baseline();
+            {
+                var expression = new Expression("10 + CustomSum(11)");
 
-            //Environment.Exit(0);
+                expression.AddFunction("CustomSum", parameters =>
+                {
+                    return 10;
+                });
 
-            //var expression = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
-            //Console.WriteLine("---FIRST---");
-            //Console.WriteLine(expression.Evaluate()); //20
-            //Console.WriteLine("---SECOND---");
-            //Console.WriteLine(expression.Evaluate()); //20
-            //Console.WriteLine(expression.Evaluate()); //20
+                expression.Evaluate();
+            }
+            {
+                var expression = new Expression("10 + CustomSum(11)");
 
-            //expression.SetParameter("extra", 10);
-            //Console.WriteLine(expression.Evaluate()); //151250
+                expression.AddFunction("CustomSum", parameters =>
+                {
+                    return 10;
+                });
 
-            //expression.SetParameter("extra", 20);
-            //Console.WriteLine(expression.Evaluate()); //211750
-
-            //#if !DEBUG
+                expression.Evaluate();
+            }
+#if !DEBUG
             var timings = new List<double>();
 
             for (int i = 0; i < 20; i++)
@@ -64,7 +66,7 @@ namespace TestHarness
             double avg = timings.Average();
             double stdDev = Math.Sqrt(timings.Select(t => Math.Pow(t - avg, 2)).Average());
             Console.WriteLine($"Best: {timings.Min():n2}, Worst: {timings.Max():n2}, Avg: {avg:n2}, StdDev: {stdDev:n2}");
-            //#endif
+#endif
         }
 
         static double Perform(string expr, int iterations)
