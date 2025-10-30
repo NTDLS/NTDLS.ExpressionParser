@@ -10,7 +10,7 @@
         public double? ParsedValue;
         public int BeginPosition;
         public int EndPosition;
-        public bool IsValid;
+        public bool IsUserVariableDerived;
     }
 
     internal struct OperationStepItem
@@ -18,14 +18,13 @@
         public string Operation;
         public int Index;
         public bool IsValid;
-        public string DEBUG;
     }
 
     internal struct ScanStepItem
     {
         public double? Value;
         public int Length;
-        public bool IsValid;
+        public bool IsUserVariableDerived;
     }
 
     internal struct PlaceholderCacheItem

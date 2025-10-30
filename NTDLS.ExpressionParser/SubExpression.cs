@@ -223,7 +223,7 @@ namespace NTDLS.ExpressionParser
 
             isUserVariableDerived = isLeftUserVariableDerived || isRightUserVariableDerived;
 
-            if (_parentExpression.State.ComputedStepCache.TryGet(out ComputedStepItem cachedObj, out int cacheIndex) && cachedObj.IsValid)
+            if (_parentExpression.State.ComputedStepCache.TryGet(out ComputedStepItem cachedObj, out int cacheIndex) && !cachedObj.IsUserVariableDerived)
             {
                 StorePlaceholder(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue, isUserVariableDerived);
             }
@@ -244,20 +244,33 @@ namespace NTDLS.ExpressionParser
                         ParsedValue = result,
                         BeginPosition = beginPosition,
                         EndPosition = endPosition,
-                        IsValid = true
+                        IsUserVariableDerived = false
                     };
-                    _parentExpression.State.ComputedStepCache.Store(cacheIndex, parsedNumber);
+                    //Is cachedObj.IsUserVariableDerived is true this means that we have already stored the value
+                    //  in the cache and storing it again would increase the visitor count causing a misalignment.
+                    if (!cachedObj.IsUserVariableDerived)
+                    {
+                        _parentExpression.State.ComputedStepCache.Store(cacheIndex, parsedNumber);
+                    }
                 }
                 else
                 {
-                    _parentExpression.State.ComputedStepCache.StoreInvalid(cacheIndex);
+                    //Is cachedObj.IsUserVariableDerived is true this means that we have already stored the value
+                    //  in the cache and storing it again would increase the visitor count causing a misalignment.
+                    if (!cachedObj.IsUserVariableDerived)
+                    {
+                        _parentExpression.State.ComputedStepCache.Store(cacheIndex, new ComputedStepItem
+                        {
+                            IsUserVariableDerived = true
+                        });
+                    }
                 }
             }
         }
 
         private double? GetLeftValue(int operationIndex, out int outParsedLength, out bool isUserVariableDerived)
         {
-            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj, out int cacheIndex) && cachedObj.IsValid)
+            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj, out int cacheIndex) && !cachedObj.IsUserVariableDerived)
             {
                 outParsedLength = cachedObj.Length;
                 isUserVariableDerived = false;
@@ -282,12 +295,17 @@ namespace NTDLS.ExpressionParser
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(cacheKey);
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
 
-                    _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
+                    //Is cachedObj.IsUserVariableDerived is true this means that we have already stored the value
+                    //  in the cache and storing it again would increase the visitor count causing a misalignment.
+                    if (!cachedObj.IsUserVariableDerived)
                     {
-                        Value = cachedItem.ComputedValue,
-                        Length = outParsedLength,
-                        IsValid = !isUserVariableDerived
-                    });
+                        _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
+                        {
+                            Value = cachedItem.ComputedValue,
+                            Length = outParsedLength,
+                            IsUserVariableDerived = isUserVariableDerived
+                        });
+                    }
 
                     return cachedItem.ComputedValue;
                 }
@@ -313,12 +331,17 @@ namespace NTDLS.ExpressionParser
                     outParsedLength = (operationIndex - i) - 1;
                     var result = _parentExpression.StringToDouble(span.Slice(operationIndex - outParsedLength, outParsedLength), out isUserVariableDerived);
 
-                    _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
+                    //Is cachedObj.IsUserVariableDerived is true this means that we have already stored the value
+                    //  in the cache and storing it again would increase the visitor count causing a misalignment.
+                    if (!cachedObj.IsUserVariableDerived)
                     {
-                        Value = result,
-                        Length = outParsedLength,
-                        IsValid = true
-                    });
+                        _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
+                        {
+                            Value = result,
+                            Length = outParsedLength,
+                            IsUserVariableDerived = false
+                        });
+                    }
 
                     return result;
                 }
@@ -327,7 +350,7 @@ namespace NTDLS.ExpressionParser
 
         private double? GetRightValue(int endOfOperationIndex, out int outParsedLength, out bool isUserVariableDerived)
         {
-            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj, out int cacheIndex) && cachedObj.IsValid)
+            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj, out int cacheIndex) && !cachedObj.IsUserVariableDerived)
             {
                 outParsedLength = cachedObj.Length;
                 isUserVariableDerived = false;
@@ -351,12 +374,15 @@ namespace NTDLS.ExpressionParser
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span.Slice(1, i - 2));
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
 
-                    _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
+                    if (!cachedObj.IsUserVariableDerived)
                     {
-                        Value = cachedItem.ComputedValue,
-                        Length = outParsedLength,
-                        IsValid = !isUserVariableDerived
-                    });
+                        _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
+                        {
+                            Value = cachedItem.ComputedValue,
+                            Length = outParsedLength,
+                            IsUserVariableDerived = isUserVariableDerived
+                        });
+                    }
 
                     return cachedItem.ComputedValue;
                 }
@@ -375,12 +401,15 @@ namespace NTDLS.ExpressionParser
                     outParsedLength = i;
                     var result = _parentExpression.StringToDouble(span.Slice(0, i), out isUserVariableDerived);
 
-                    _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
+                    if (!cachedObj.IsUserVariableDerived)
                     {
-                        Value = result,
-                        Length = outParsedLength,
-                        IsValid = true
-                    });
+                        _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
+                        {
+                            Value = result,
+                            Length = outParsedLength,
+                            IsUserVariableDerived = false
+                        });
+                    }
 
                     return result;
                 }
@@ -427,11 +456,7 @@ namespace NTDLS.ExpressionParser
                 }
 
                 //No operation found.
-                operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
-                {
-                    DEBUG = "YES:" + "!"
-                });
-                //operation = _parentExpression.State.OperationStepCache.StoreInvalid(cacheIndex);
+                operation = _parentExpression.State.OperationStepCache.StoreInvalid(cacheIndex);
                 return false;
             }
         }
@@ -466,11 +491,7 @@ namespace NTDLS.ExpressionParser
                 }
 
                 //No operation found.
-                operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
-                {
-                    DEBUG = "YES:" + string.Join(',', validOperations.ToArray())
-                });
-                //operation = _parentExpression.State.OperationStepCache.StoreInvalid(cacheIndex);
+                operation = _parentExpression.State.OperationStepCache.StoreInvalid(cacheIndex);
                 return false;
             }
         }
@@ -513,13 +534,7 @@ namespace NTDLS.ExpressionParser
                 }
 
                 //No operation found.
-
-                operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
-                {
-                    DEBUG = "YES:" + string.Join(',', validOperations)
-                });
-
-                //operation = _parentExpression.State.OperationStepCache.StoreInvalid(cacheIndex);
+                operation = _parentExpression.State.OperationStepCache.StoreInvalid(cacheIndex);
                 return false;
             }
         }

@@ -53,7 +53,6 @@ namespace NTDLS.ExpressionParser
             {
                 Array.Resize(ref _items, cacheIndex + 1);
             }
-
             _items[cacheIndex] = default;
             return default;
         }
@@ -66,7 +65,6 @@ namespace NTDLS.ExpressionParser
             {
                 Array.Resize(ref _items, cacheIndex + 1);
             }
-
             _items[cacheIndex] = value;
             return value;
         }
