@@ -111,9 +111,9 @@ namespace NTDLS.ExpressionParser
                     {
                         if (Utility.PersistentCaches.TryGetValue(expressionHash, out CachedState? entry) && entry != null)
                         {
-                            ComputedStepCache.CopyTo(entry.State.ComputedStepCache);
-                            ScanStepCache.CopyTo(entry.State.ScanStepCache);
-                            OperationStepCache.CopyTo(entry.State.OperationStepCache);
+                            ComputedStepCache.CopyToNoFurtherGrowth(entry.State.ComputedStepCache);
+                            ScanStepCache.CopyToNoFurtherGrowth(entry.State.ScanStepCache);
+                            OperationStepCache.CopyToNoFurtherGrowth(entry.State.OperationStepCache);
                         }
                         _isTemplateCacheHydrated = true;
                     }

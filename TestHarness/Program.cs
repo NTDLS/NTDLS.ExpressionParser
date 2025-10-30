@@ -25,24 +25,14 @@ namespace TestHarness
             stopwatch.Stop();
 
             Console.WriteLine(stopwatch.Elapsed.TotalMilliseconds);
-            Environment.Exit(0);
         }
 
         static void Main()
         {
-            Baseline();
-            /*
-            var expression = new Expression("10 * ((5 + extra + CustomSum(11,55) + ( 10 + !0 )) * Ceil(SUM(11.6, 12.5, 14.7, 11.11)) + 60.5) * 10");
+            //Baseline();
 
-            expression.SetParameter("extra", 1000);
+            //Environment.Exit(0);
 
-            expression.AddFunction("CustomSum", parameters =>
-            {
-                return null;
-            });
-
-            Console.WriteLine(expression.Evaluate()?.ToString() ?? "{NULL}");
-            */
             //var expression = new Expression("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10");
             //Console.WriteLine("---FIRST---");
             //Console.WriteLine(expression.Evaluate()); //20
@@ -56,7 +46,7 @@ namespace TestHarness
             //expression.SetParameter("extra", 20);
             //Console.WriteLine(expression.Evaluate()); //211750
 
-#if !DEBUG
+//#if !DEBUG
             var timings = new List<double>();
 
             for (int i = 0; i < 20; i++)
@@ -73,7 +63,7 @@ namespace TestHarness
             double avg = timings.Average();
             double stdDev = Math.Sqrt(timings.Select(t => Math.Pow(t - avg, 2)).Average());
             Console.WriteLine($"Best: {timings.Min():n2}, Worst: {timings.Max():n2}, Avg: {avg:n2}, StdDev: {stdDev:n2}");
-#endif
+//#endif
         }
 
         static double Perform(string expr, int iterations)
