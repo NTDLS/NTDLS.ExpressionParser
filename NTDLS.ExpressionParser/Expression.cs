@@ -35,7 +35,7 @@ namespace NTDLS.ExpressionParser
             {
                 if (Options.CustomHash == null)
                 {
-                    using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                    using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
                     hasher.AppendData(Encoding.UTF8.GetBytes(text));
                     hasher.AppendData(BitConverter.GetBytes(Options.OptionsHash()));
                     _expressionHash = hasher.GetCurrentHash();
