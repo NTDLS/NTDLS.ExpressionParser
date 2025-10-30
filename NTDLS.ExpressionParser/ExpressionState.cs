@@ -102,7 +102,7 @@ namespace NTDLS.ExpressionParser
 
         #endregion
 
-        public void HydrateTemplateCache(int expressionHash)
+        public void HydrateTemplateCache(byte[] expressionHash)
         {
             if (!_isTemplateCacheHydrated)
             {

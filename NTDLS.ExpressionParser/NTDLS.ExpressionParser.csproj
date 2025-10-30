@@ -19,13 +19,13 @@
     <RepositoryUrl>https://github.com/NTDLS/NTDLS.ExpressionParser</RepositoryUrl>
     <PackageTags>expression-parser;math;math-parser;expression;equation;mathematics</PackageTags>
     <PackageReleaseNotes>
-      Major optimizations and bug fixes.
+      Added custom hashing.
     </PackageReleaseNotes>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Authors>NetworkDLS</Authors>
     <Company>NetworkDLS</Company>
-    <version>1.5.2</version>
+    <version>1.5.3</version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>128.png</PackageIcon>
   </PropertyGroup>

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace NTDLS.ExpressionParser
@@ -18,7 +19,7 @@ namespace NTDLS.ExpressionParser
         internal ExpressionOptions Options { get; set; }
         internal Dictionary<string, ExpressionFunction> ExpressionFunctions { get; private set; } = new();
 
-        private readonly int _expressionHash = 0;
+        private readonly byte[] _expressionHash = [];
 
         #region ~/ctor and Sanitize.
 
@@ -32,7 +33,17 @@ namespace NTDLS.ExpressionParser
 
             if (Options.UseCompileCache)
             {
-                _expressionHash = Utility.FastHash(text, Options.OptionsHash());
+                if (Options.CustomHash == null)
+                {
+                    using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                    hasher.AppendData(Encoding.UTF8.GetBytes(text));
+                    hasher.AppendData(BitConverter.GetBytes(Options.OptionsHash()));
+                    _expressionHash = hasher.GetCurrentHash();
+                }
+                else
+                {
+                    _expressionHash = Options.CustomHash;
+                }
 
                 var cached = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
                 {
