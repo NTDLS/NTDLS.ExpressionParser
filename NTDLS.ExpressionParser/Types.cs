@@ -16,6 +16,7 @@
     {
         public string Operation;
         public int Index;
+        public bool Found;
     }
 
     internal struct ScanStepItem

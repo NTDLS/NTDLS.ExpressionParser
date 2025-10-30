@@ -29,7 +29,7 @@ namespace TestHarness
 
         static void Main()
         {
-            //Baseline();
+            Baseline();
 
             //Environment.Exit(0);
 

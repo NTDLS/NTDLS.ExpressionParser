@@ -5,8 +5,7 @@ namespace NTDLS.ExpressionParser
 {
     internal class VisitorCache<T>(int initialCapacity) where T : struct
     {
-        public bool AllowGrowth { get; private set; } = true;
-        private int _consumed = 0;
+        private int _utilized = 0;
         private int _next = 0;
         private VisitorCacheContainer<T>[] _items = new VisitorCacheContainer<T>[initialCapacity];
 
@@ -21,7 +20,7 @@ namespace NTDLS.ExpressionParser
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                if (index < 0 || index >= _consumed)
+                if (index < 0 || index >= _utilized)
                     throw new IndexOutOfRangeException();
 
                 return ref _items[index];
@@ -31,68 +30,81 @@ namespace NTDLS.ExpressionParser
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void CopyTo(VisitorCache<T> target)
         {
-            for (int i = 0; i < _consumed; i++)
+            for (int i = 0; i < _utilized; i++)
             {
-                target.Store(_items[i]);
+                target.Store(i,_items[i]);
             }
-            target.AllowGrowth = AllowGrowth;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void CopyToNoFurtherGrowth(VisitorCache<T> target)
+        public bool TryGet([NotNullWhen(true)] out T value, out int cacheIndex)
         {
-            for (int i = 0; i < _consumed; i++)
+            if (_next < _utilized)
             {
-                target.Store(_items[i]);
-            }
-            target.AllowGrowth = false;
-        }
+                cacheIndex = _next++;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGet([NotNullWhen(true)] out T value)
-        {
-            if(!AllowGrowth && _next > _consumed)
-            {
-                throw new InvalidOperationException("VisitorCache cannot grow further.");
-            }
+                if (cacheIndex > _utilized)
+                {
+                    _utilized = cacheIndex;
+                }
+                if (cacheIndex >= _items.Length)
+                {
+                    Array.Resize(ref _items, (cacheIndex + 1) * 2);
+                }
 
-            if (_next < _consumed)
-            {
-                value = _items[_next].Value;
-                _next++;
-                return _items[_next].IsValid;
+                value = _items[cacheIndex].Value;
+                return _items[cacheIndex].IsValid;
             }
-            _next++;
+            cacheIndex = _next++;
             value = default;
             return false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Store(T value, bool isValid)
+        public T StoreInvalid(int cacheIndex)
         {
-            if (!AllowGrowth && _next > _consumed)
+            if (cacheIndex > _utilized)
             {
-                throw new InvalidOperationException("VisitorCache cannot grow further.");
+                _utilized = cacheIndex;
             }
-            if (_consumed >= _items.Length)
+            if (cacheIndex >= _items.Length)
             {
-                Array.Resize(ref _items, (_items.Length + 1) * 2);
+                Array.Resize(ref _items, (cacheIndex + 1) * 2);
             }
-            _items[_consumed++] = new VisitorCacheContainer<T>(value, isValid);
+
+            _items[cacheIndex] = default;
+            return default;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Store(VisitorCacheContainer<T> value)
+        public T Store(int cacheIndex, T value, bool isValid)
         {
-            if (!AllowGrowth && _next > _consumed)
+            if (cacheIndex > _utilized)
             {
-                throw new InvalidOperationException("VisitorCache cannot grow further.");
+                _utilized = cacheIndex;
             }
-            if (_consumed >= _items.Length)
+            if (cacheIndex >= _items.Length)
             {
-                Array.Resize(ref _items, (_items.Length + 1) * 2);
+                Array.Resize(ref _items, (cacheIndex + 1) * 2);
             }
-            _items[_consumed++] = value;
+
+            _items[cacheIndex] = new VisitorCacheContainer<T>(value, isValid);
+            return value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public VisitorCacheContainer<T> Store(int cacheIndex, VisitorCacheContainer<T> value)
+        {
+            if (cacheIndex > _utilized)
+            {
+                _utilized = cacheIndex;
+            }
+            if (cacheIndex >= _items.Length)
+            {
+                Array.Resize(ref _items, (cacheIndex+ 1) * 2);
+            }
+            _items[cacheIndex] = value;
+            return value;
         }
     }
 }

@@ -143,42 +143,39 @@ namespace NTDLS.ExpressionParser
 
             bool isAnyUserVariableDerived = false;
 
+            OperationStepItem found;
+
             while (true)
             {
-                int operatorIndex;
-
                 //Pre-first-order:
-                while ((operatorIndex = GetFreestandingNotOperation(out _)) != -1)
+                while (GetFreestandingNotOperation(out found))
                 {
-                    var rightValue = GetRightValue(operatorIndex + 1, out int outParsedLength, out bool isUserVariableDerived);
+                    var rightValue = GetRightValue(found.Index + 1, out int outParsedLength, out bool isUserVariableDerived);
                     isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
                     int? calculatedResult = rightValue == null ? null : (rightValue == 0) ? 1 : 0;
-                    StorePlaceholder(operatorIndex, operatorIndex + outParsedLength, calculatedResult, isUserVariableDerived);
+                    StorePlaceholder(found.Index, found.Index + outParsedLength, calculatedResult, isUserVariableDerived);
                 }
 
                 //First order operations:
-                operatorIndex = GetIndexOfOperation(Utility.FirstOrderOperations, out string operation);
-                if (operatorIndex > 0)
+                if (GetIndexOfOperation(Utility.FirstOrderOperations, out found))
                 {
-                    CollapseRightAndLeft(operation, operatorIndex, out bool isUserVariableDerived);
+                    CollapseRightAndLeft(found.Operation, found.Index, out bool isUserVariableDerived);
                     isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
                     continue;
                 }
 
                 //Second order operations:
-                operatorIndex = GetIndexOfOperation(Utility.SecondOrderOperations, out operation);
-                if (operatorIndex > 0)
+                if (GetIndexOfOperation(Utility.SecondOrderOperations, out found))
                 {
-                    CollapseRightAndLeft(operation, operatorIndex, out bool isUserVariableDerived);
+                    CollapseRightAndLeft(found.Operation, found.Index, out bool isUserVariableDerived);
                     isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
                     continue;
                 }
 
                 //Third order operations:
-                operatorIndex = GetIndexOfOperation(Utility.ThirdOrderOperations, out operation);
-                if (operatorIndex > 0)
+                if (GetIndexOfOperation(Utility.ThirdOrderOperations, out found))
                 {
-                    CollapseRightAndLeft(operation, operatorIndex, out bool isUserVariableDerived);
+                    CollapseRightAndLeft(found.Operation, found.Index, out bool isUserVariableDerived);
                     isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
                     continue;
                 }
@@ -226,7 +223,7 @@ namespace NTDLS.ExpressionParser
 
             isUserVariableDerived = isLeftUserVariableDerived || isRightUserVariableDerived;
 
-            if (_parentExpression.State.ComputedStepCache.TryGet(out ComputedStepItem cachedObj))
+            if (_parentExpression.State.ComputedStepCache.TryGet(out ComputedStepItem cachedObj, out int cacheIndex))
             {
                 StorePlaceholder(cachedObj.BeginPosition, cachedObj.EndPosition, cachedObj.ParsedValue, isUserVariableDerived);
             }
@@ -248,18 +245,18 @@ namespace NTDLS.ExpressionParser
                         BeginPosition = beginPosition,
                         EndPosition = endPosition
                     };
-                    _parentExpression.State.ComputedStepCache.Store(parsedNumber, true);
+                    _parentExpression.State.ComputedStepCache.Store(cacheIndex, parsedNumber, true);
                 }
                 else
                 {
-                    _parentExpression.State.ComputedStepCache.Store(new(), false);
+                    _parentExpression.State.ComputedStepCache.StoreInvalid(cacheIndex);
                 }
             }
         }
 
         private double? GetLeftValue(int operationIndex, out int outParsedLength, out bool isUserVariableDerived)
         {
-            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj))
+            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj, out int cacheIndex))
             {
                 outParsedLength = cachedObj.Length;
                 isUserVariableDerived = false;
@@ -284,7 +281,7 @@ namespace NTDLS.ExpressionParser
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(cacheKey);
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
 
-                    _parentExpression.State.ScanStepCache.Store(new ScanStepItem
+                    _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
                     {
                         Value = cachedItem.ComputedValue,
                         Length = outParsedLength,
@@ -314,7 +311,7 @@ namespace NTDLS.ExpressionParser
                     outParsedLength = (operationIndex - i) - 1;
                     var result = _parentExpression.StringToDouble(span.Slice(operationIndex - outParsedLength, outParsedLength), out isUserVariableDerived);
 
-                    _parentExpression.State.ScanStepCache.Store(new ScanStepItem
+                    _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
                     {
                         Value = result,
                         Length = outParsedLength,
@@ -327,7 +324,7 @@ namespace NTDLS.ExpressionParser
 
         private double? GetRightValue(int endOfOperationIndex, out int outParsedLength, out bool isUserVariableDerived)
         {
-            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj))
+            if (_parentExpression.State.ScanStepCache.TryGet(out var cachedObj, out int cacheIndex))
             {
                 outParsedLength = cachedObj.Length;
                 isUserVariableDerived = false;
@@ -351,7 +348,7 @@ namespace NTDLS.ExpressionParser
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span.Slice(1, i - 2));
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
 
-                    _parentExpression.State.ScanStepCache.Store(new ScanStepItem
+                    _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
                     {
                         Value = cachedItem.ComputedValue,
                         Length = outParsedLength,
@@ -374,7 +371,7 @@ namespace NTDLS.ExpressionParser
                     outParsedLength = i;
                     var result = _parentExpression.StringToDouble(span.Slice(0, i), out isUserVariableDerived);
 
-                    _parentExpression.State.ScanStepCache.Store(new ScanStepItem
+                    _parentExpression.State.ScanStepCache.Store(cacheIndex, new ScanStepItem
                     {
                         Value = result,
                         Length = outParsedLength,
@@ -386,40 +383,56 @@ namespace NTDLS.ExpressionParser
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int GetFreestandingNotOperation(out string outFoundOperation)
+        private bool GetFreestandingNotOperation(out OperationStepItem operation)
         {
-            ReadOnlySpan<char> span = Text.AsSpan();
-            int len = span.Length - 1;
-
-            for (int i = 0; i < len; i++)
+            if (_parentExpression.State.OperationStepCache.TryGet(out operation, out int cacheIndex))
             {
-                //Make sure we have a "!' and not a "!=", these two have to be handled in different places.
-                if (span[i] == '!' && span[i + 1] != '=')
+                return operation.Found;
+            }
+            else
+            {
+                ReadOnlySpan<char> span = Text.AsSpan();
+                int len = span.Length - 1;
+
+                for (int i = 0; i < len; i++)
                 {
-                    outFoundOperation = "!";
-                    return i;
+                    //Make sure we have a "!' and not a "!=", these two have to be handled in different places.
+                    if (span[i] == '!' && span[i + 1] != '=')
+                    {
+                        operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
+                        {
+                            Index = i,
+                            Operation = "!",
+                            Found = true
+                        }, true);
+                        return true;
+                    }
                 }
-            }
 
-            // Check last char separately
-            if (len >= 0 && span[len] == '!')
-            {
-                outFoundOperation = "!";
-                return len;
-            }
+                // Check last char separately
+                if (len >= 0 && span[len] == '!')
+                {
+                    operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
+                    {
+                        Index = len,
+                        Operation = "!",
+                        Found = true
+                    }, true);
+                    return true;
+                }
 
-            outFoundOperation = string.Empty;
-            return -1;
+                //No operation found.
+                operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem() { Found = false }, true);
+                return false;
+            }
         }
 
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int GetIndexOfOperation(ReadOnlySpan<char> validOperations, out string foundOperation)
+        private bool GetIndexOfOperation(ReadOnlySpan<char> validOperations, out OperationStepItem operation)
         {
-            if (_parentExpression.State.OperationStepCache.TryGet(out var cachedObj))
+            if (_parentExpression.State.OperationStepCache.TryGet(out operation, out int cacheIndex))
             {
-                foundOperation = cachedObj.Operation;
-                return cachedObj.Index;
+                return operation.Found;
             }
             else
             {
@@ -432,57 +445,64 @@ namespace NTDLS.ExpressionParser
                     {
                         if (c == validOperations[j])
                         {
-                            _parentExpression.State.OperationStepCache.Store(new OperationStepItem()
+                            operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
                             {
                                 Index = i,
-                                Operation = c.ToString()
+                                Operation = c.ToString(),
+                                Found = true
                             }, true);
-                            foundOperation = c.ToString();
-                            return i;
+                            return true;
                         }
                     }
                 }
 
-                foundOperation = string.Empty;
-
-                _parentExpression.State.OperationStepCache.Store(new OperationStepItem()
-                {
-                    Index = -1
-                }, true);
-
-                return -1;
+                //No operation found.
+                operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem() { Found = false }, true);
+                return false;
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int GetIndexOfOperation(string[] validOperations, out string foundOperation)
+        private bool GetIndexOfOperation(string[] validOperations, out OperationStepItem operation)
         {
-            ReadOnlySpan<char> span = Text.AsSpan();
-            for (int i = 0; i < span.Length; i++)
+            if (_parentExpression.State.OperationStepCache.TryGet(out operation, out int cacheIndex))
             {
-                // For each position, test all operations.
-                for (int j = 0; j < validOperations.Length; j++)
+                return operation.Found;
+            }
+            else
+            {
+                ReadOnlySpan<char> span = Text.AsSpan();
+                for (int i = 0; i < span.Length; i++)
                 {
-                    string op = validOperations[j];
-                    ReadOnlySpan<char> opSpan = op.AsSpan();
-
-                    // If not enough room left, skip
-                    if (i + opSpan.Length > span.Length)
-                        continue;
-
-                    // Compare directly (Span sequence equality)
-                    if (span.Slice(i, opSpan.Length).SequenceEqual(opSpan))
+                    // For each position, test all operations.
+                    for (int j = 0; j < validOperations.Length; j++)
                     {
-                        // earliest operator found, stop scanning
-                        foundOperation = op;
-                        return i;
+                        string op = validOperations[j];
+                        ReadOnlySpan<char> opSpan = op.AsSpan();
+
+                        // If not enough room left, skip
+                        if (i + opSpan.Length > span.Length)
+                            continue;
+
+                        // Compare directly (Span sequence equality)
+                        if (span.Slice(i, opSpan.Length).SequenceEqual(opSpan))
+                        {
+                            // earliest operator found, stop scanning
+                            operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
+                            {
+                                Index = i,
+                                Operation = op,
+                                Found = true
+                            }, true);
+                            return true;
+                        }
                     }
                 }
+
+                //No operation found.
+                operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem() { Found = false }, true);
+                return false;
             }
-
-            foundOperation = string.Empty; //No operation found.
-            return -1;
         }
-
     }
 }
