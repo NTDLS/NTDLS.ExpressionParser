@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationIcon>Logo.ico</ApplicationIcon>
-    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0;net10.0;</TargetFrameworks>
     <Title>NTDLS.ExpressionParser</Title>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
@@ -19,13 +19,13 @@
     <RepositoryUrl>https://github.com/NTDLS/NTDLS.ExpressionParser</RepositoryUrl>
     <PackageTags>expression-parser;math;math-parser;expression;equation;mathematics</PackageTags>
     <PackageReleaseNotes>
-      Added custom hashing.
+      Dependency updates and introduced .net 10 support.
     </PackageReleaseNotes>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Authors>NetworkDLS</Authors>
     <Company>NetworkDLS</Company>
-    <version>1.5.3</version>
+    <version>1.5.4</version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>128.png</PackageIcon>
   </PropertyGroup>
