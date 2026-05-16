@@ -88,16 +88,15 @@ namespace NTDLS.ExpressionParser
 
         public PlaceholderCacheItem GetPlaceholderCacheItem(ReadOnlySpan<char> span)
         {
-            switch (span.Length)
+            int index = 0;
+            for (int i = 0; i < span.Length; i++)
             {
-                case 1:
-                    return _placeholderCache[span[0] - '0'];
-                default:
-                    int index = 0;
-                    for (int i = 0; i < span.Length; i++)
-                        index = index * 10 + (span[i] - '0');
-                    return _placeholderCache[index];
+                int digit = span[i] - '0';
+                if ((uint)digit > 9)
+                    throw new Exception($"Invalid placeholder key: '{span.ToString()}'. Expected a numeric cache index.");
+                index = index * 10 + digit;
             }
+            return _placeholderCache[index];
         }
 
         #endregion

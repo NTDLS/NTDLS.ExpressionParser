@@ -90,13 +90,11 @@ namespace NTDLS.ExpressionParser
                 State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
 
-            if (State.WorkingText[0] == '$')
-            {
-                State.HydrateTemplateCache(_expressionHash);
-                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
-            }
-
             State.HydrateTemplateCache(_expressionHash);
+
+            if (Utility.IsSinglePlaceholder(State.WorkingText))
+                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
+
             return StringToDouble(State.WorkingText, out _);
         }
 
@@ -134,16 +132,12 @@ namespace NTDLS.ExpressionParser
 
             work.AppendLine($"}} = {SwapInCacheValues(State.WorkingText)}");
 
-            if (State.WorkingText[0] == '$')
-            {
-                showWork = work.ToString();
-                State.HydrateTemplateCache(_expressionHash);
-                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
-            }
-
             showWork = work.ToString();
-
             State.HydrateTemplateCache(_expressionHash);
+
+            if (Utility.IsSinglePlaceholder(State.WorkingText))
+                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
+
             return StringToDouble(State.WorkingText, out _);
         }
 

@@ -183,11 +183,11 @@ namespace NTDLS.ExpressionParser
                 break;
             }
 
-            if (Text[0] == '$')
-            {
-                //We already have this value in the cache.
+            if (Utility.IsSinglePlaceholder(Text))
                 return Text;
-            }
+
+            if (Text[0] == '$')
+                throw new Exception($"Expression was not fully reduced: '{Text}'. This may indicate a bug in operator parsing or a cache misalignment.");
 
             return _parentExpression.State.StorePlaceholderCacheItem(_parentExpression.StringToDouble(Text, out _));
         }

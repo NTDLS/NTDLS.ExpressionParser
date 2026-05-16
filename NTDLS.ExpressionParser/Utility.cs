@@ -95,6 +95,20 @@ namespace NTDLS.ExpressionParser
         internal static readonly char[] MathChars = ['*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~'];
         internal static readonly string[] IntegerExclusiveOperations = ["&", "|", "^", "&=", "|=", "^=", "<<", ">>"];
 
+        /// <summary>
+        /// Returns true when the entire span is a single placeholder of the form $digits$.
+        /// Rejects composite expressions like "$0$||$1$" that merely start with '$'.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsSinglePlaceholder(ReadOnlySpan<char> text)
+        {
+            if (text.Length < 3 || text[0] != '$' || text[^1] != '$')
+                return false;
+            for (int i = 1; i < text.Length - 1; i++)
+                if (!char.IsAsciiDigit(text[i])) return false;
+            return true;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsNativeFunction(string value) => NativeFunctions.Contains(value);
 
