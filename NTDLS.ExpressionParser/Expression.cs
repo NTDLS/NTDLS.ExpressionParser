@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -39,6 +40,7 @@ namespace NTDLS.ExpressionParser
                     hasher.AppendData(Encoding.UTF8.GetBytes(text));
                     hasher.AppendData(BitConverter.GetBytes(Options.OptionsHash()));
                     _expressionHash = hasher.GetCurrentHash();
+
                 }
                 else
                 {
@@ -51,10 +53,7 @@ namespace NTDLS.ExpressionParser
 
                     var sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
                     var state = new ExpressionState(sanitized, Options);
-
-                    var cached = new CachedState(sanitized, state);
-
-                    return cached;
+                    return new CachedState(sanitized, state);
                 }) ?? throw new Exception("Failed to create persistent cache.");
 
                 Sanitized = cached.Sanitized;
@@ -171,7 +170,7 @@ namespace NTDLS.ExpressionParser
         /// <param name="options">Expression evaluation options.</param>
         public static double EvaluateNotNull(string expression, out string showWork, out bool outResultWasNull, ExpressionOptions? options = null)
         {
-            var result = new Expression(expression).Evaluate(out showWork);
+            var result = new Expression(expression, options).Evaluate(out showWork);
             outResultWasNull = result == null;
             return result ?? 0;
         }
@@ -184,7 +183,7 @@ namespace NTDLS.ExpressionParser
         /// <param name="options">Expression evaluation options.</param>
         public static double EvaluateNotNull(string expression, out bool outResultWasNull, ExpressionOptions? options = null)
         {
-            var result = new Expression(expression).Evaluate();
+            var result = new Expression(expression, options).Evaluate();
             outResultWasNull = result == null;
             return result ?? 0;
         }
@@ -195,7 +194,7 @@ namespace NTDLS.ExpressionParser
         /// <param name="expression">Mathematical expression in string form.</param>
         /// <param name="options">Expression evaluation options.</param>
         public static double EvaluateNotNull(string expression, ExpressionOptions? options = null)
-             => new Expression(expression).Evaluate() ?? 0;
+             => new Expression(expression, options).Evaluate() ?? 0;
 
         #endregion
 
@@ -265,7 +264,7 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         private string SwapInCacheValues(string text)
         {
-            var copy = new string(text);
+            var copy = text;
 
             while (true)
             {
