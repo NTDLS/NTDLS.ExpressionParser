@@ -29,7 +29,7 @@
         /// A custom hash to uniquely identify this expression.
         /// This is useful when the expression is basic but varies by function and/or variables.
         /// </summary>
-        public byte[]? CustomHash { get; set; } = null;
+        public string? CustomHash { get; set; }
 
         /// <summary>
         /// Returns a hash code for the current object based on its configuration properties.

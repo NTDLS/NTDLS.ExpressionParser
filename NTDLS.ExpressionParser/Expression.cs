@@ -19,7 +19,7 @@ namespace NTDLS.ExpressionParser
         internal ExpressionOptions Options { get; set; }
         internal Dictionary<string, ExpressionFunction> ExpressionFunctions { get; private set; } = new();
 
-        private readonly byte[] _expressionHash = [];
+        private readonly string _expressionHash = string.Empty;
 
         #region ~/ctor and Sanitize.
 
@@ -38,12 +38,12 @@ namespace NTDLS.ExpressionParser
                     using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
                     hasher.AppendData(Encoding.UTF8.GetBytes(text));
                     hasher.AppendData(BitConverter.GetBytes(Options.OptionsHash()));
-                    _expressionHash = hasher.GetCurrentHash();
+                    _expressionHash = Convert.ToHexString(hasher.GetCurrentHash());
 
                 }
                 else
                 {
-                    _expressionHash = (byte[])Options.CustomHash.Clone();
+                    _expressionHash = Options.CustomHash;
                 }
 
                 var cached = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
