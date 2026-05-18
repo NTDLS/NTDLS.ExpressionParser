@@ -111,9 +111,12 @@ namespace NTDLS.ExpressionParser
                     {
                         if (Utility.PersistentCaches.TryGetValue(expressionHash, out CachedState? entry) && entry != null)
                         {
-                            entry.State.ComputedStepCache.CopyFrom(ComputedStepCache);
-                            entry.State.ScanStepCache.CopyFrom(ScanStepCache);
-                            entry.State.OperationStepCache.CopyFrom(OperationStepCache);
+                            lock (entry.State)
+                            {
+                                entry.State.ComputedStepCache.CopyFrom(ComputedStepCache);
+                                entry.State.ScanStepCache.CopyFrom(ScanStepCache);
+                                entry.State.OperationStepCache.CopyFrom(OperationStepCache);
+                            }
                         }
                         _isTemplateCacheHydrated = true;
                     }
@@ -132,29 +135,32 @@ namespace NTDLS.ExpressionParser
 
         public ExpressionState Clone(Sanitized sanitized)
         {
-            var clone = new ExpressionState(_options, sanitized.OperationCount, WorkingText.Length * 2,
-                Math.Max(ComputedStepCache.Allocated, _operationCount),
-                Math.Max(ScanStepCache.Allocated, _operationCount),
-                Math.Max(OperationStepCache.Allocated, _operationCount))
+            lock (this)
             {
-                WorkingText = WorkingText,
-                _operationCount = _operationCount,
-                _nextPlaceholderCacheSlot = _nextPlaceholderCacheSlot,
-                _placeholderCache = new PlaceholderCacheItem[_placeholderCache.Length],
-                _isTemplateCacheHydrated = _isTemplateCacheHydrated
-            };
+                var clone = new ExpressionState(_options, sanitized.OperationCount, WorkingText.Length * 2,
+                    Math.Max(ComputedStepCache.Allocated, _operationCount),
+                    Math.Max(ScanStepCache.Allocated, _operationCount),
+                    Math.Max(OperationStepCache.Allocated, _operationCount))
+                {
+                    WorkingText = WorkingText,
+                    _operationCount = _operationCount,
+                    _nextPlaceholderCacheSlot = _nextPlaceholderCacheSlot,
+                    _placeholderCache = new PlaceholderCacheItem[_placeholderCache.Length],
+                    _isTemplateCacheHydrated = _isTemplateCacheHydrated
+                };
 
-            clone.ComputedStepCache.CopyFrom(ComputedStepCache);
-            clone.ScanStepCache.CopyFrom(ScanStepCache);
-            clone.OperationStepCache.CopyFrom(OperationStepCache);
+                clone.ComputedStepCache.CopyFrom(ComputedStepCache);
+                clone.ScanStepCache.CopyFrom(ScanStepCache);
+                clone.OperationStepCache.CopyFrom(OperationStepCache);
 
-            for (int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
-            {
-                //We typically do not keep placeholders, but for hard-coded NULLs in the expression we do, because they are supplied by the user.
-                clone._placeholderCache[i] = _placeholderCache[i]; //Copy any pre-defined NULLs.
+                for (int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
+                {
+                    //We typically do not keep placeholders, but for hard-coded NULLs in the expression we do, because they are supplied by the user.
+                    clone._placeholderCache[i] = _placeholderCache[i]; //Copy any pre-defined NULLs.
+                }
+
+                return clone;
             }
-
-            return clone;
         }
 
         public void ApplyParameters(Sanitized sanitized, Dictionary<string, double?> definedParameters)
