@@ -43,7 +43,7 @@ namespace NTDLS.ExpressionParser
                 }
                 else
                 {
-                    _expressionHash = Options.CustomHash;
+                    _expressionHash = (byte[])Options.CustomHash.Clone();
                 }
 
                 var cached = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
