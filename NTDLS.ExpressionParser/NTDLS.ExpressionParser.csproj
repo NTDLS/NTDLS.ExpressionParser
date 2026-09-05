@@ -10,7 +10,7 @@
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <IncludeSymbols>True</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <Copyright>Copyright © 2025 NetworkDLS</Copyright>
+    <Copyright>Copyright © 2026 NetworkDLS</Copyright>
     <Description>
       A mathematics parsing engine for .net. It supports expression nesting, custom variables, custom functions all standard mathematical operations for integer, decimal (floating point), logic and bitwise.
       It addition to the custom functions and variables, these are built in: ACOS, ASIN, ATAN, ATAN2, LDEXP, SINH, COSH, TANH, LOG, LOG10, EXP, MODPOW, SQRT, POW, FLOOR, CEIL, NOT, AVG, SUM, TAN, ATAN, SIN, COS, ABS.
@@ -19,13 +19,13 @@
     <RepositoryUrl>https://github.com/NTDLS/NTDLS.ExpressionParser</RepositoryUrl>
     <PackageTags>expression-parser;math;math-parser;expression;equation;mathematics</PackageTags>
     <PackageReleaseNotes>
-		Hash is now hex string.
+		Dependency updates.
 	</PackageReleaseNotes>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Authors>NetworkDLS</Authors>
     <Company>NetworkDLS</Company>
-    <version>1.5.8</version>
+    <version>1.5.9</version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>128.png</PackageIcon>
   </PropertyGroup>
@@ -46,8 +46,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.8" />
-    <PackageReference Include="System.IO.Hashing" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.11" />
+    <PackageReference Include="System.IO.Hashing" Version="10.0.11" />
   </ItemGroup>
 
 </Project>
