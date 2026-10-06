@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace NTDLS.ExpressionParser
@@ -11,6 +10,9 @@ namespace NTDLS.ExpressionParser
     /// </summary>
     public class Expression
     {
+        private static readonly double[] _powersOfTen =
+            [1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22];
+
         private readonly string _precisionFormat;
         private readonly Dictionary<string, double?> _definedParameters = new();
 
@@ -19,7 +21,13 @@ namespace NTDLS.ExpressionParser
         internal ExpressionOptions Options { get; set; }
         internal Dictionary<string, ExpressionFunction> ExpressionFunctions { get; private set; } = new();
 
-        private readonly string _expressionHash = string.Empty;
+        private readonly CacheKey? _cacheKey;
+
+        /// <summary>
+        /// Identifies a compiled expression in the persistent cache. Includes every option that is baked into the
+        /// cached state so that expressions with differing options can never share an entry.
+        /// </summary>
+        private readonly record struct CacheKey(string Text, bool IsCustomHash, bool UseFastFloatingPointParser, double? DefaultNullValue);
 
         #region ~/ctor and Sanitize.
 
@@ -33,20 +41,10 @@ namespace NTDLS.ExpressionParser
 
             if (Options.UseCompileCache)
             {
-                if (Options.CustomHash == null)
-                {
-                    using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
-                    hasher.AppendData(Encoding.UTF8.GetBytes(text));
-                    hasher.AppendData(BitConverter.GetBytes(Options.OptionsHash()));
-                    _expressionHash = Convert.ToHexString(hasher.GetCurrentHash());
+                _cacheKey = new CacheKey(Options.CustomHash ?? text, Options.CustomHash != null,
+                    Options.UseFastFloatingPointParser, Options.DefaultNullValue);
 
-                }
-                else
-                {
-                    _expressionHash = Options.CustomHash;
-                }
-
-                var cached = Utility.PersistentCaches.GetOrCreate(_expressionHash, entry =>
+                var cached = Utility.PersistentCaches.GetOrCreate(_cacheKey, entry =>
                 {
                     entry.SlidingExpiration = TimeSpan.FromMinutes(5);
 
@@ -88,7 +86,8 @@ namespace NTDLS.ExpressionParser
                 State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
             } while (!isComplete);
 
-            State.HydrateTemplateCache(_expressionHash);
+            if (_cacheKey != null)
+                State.HydrateTemplateCache(_cacheKey);
 
             if (Utility.IsSinglePlaceholder(State.WorkingText))
                 return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
@@ -131,7 +130,8 @@ namespace NTDLS.ExpressionParser
             work.AppendLine($"}} = {SwapInCacheValues(State.WorkingText)}");
 
             showWork = work.ToString();
-            State.HydrateTemplateCache(_expressionHash);
+            if (_cacheKey != null)
+                State.HydrateTemplateCache(_cacheKey);
 
             if (Utility.IsSinglePlaceholder(State.WorkingText))
                 return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
@@ -286,11 +286,7 @@ namespace NTDLS.ExpressionParser
 
         internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
         {
-            State.Buffer.Clear();
-            State.Buffer.Append(original.AsSpan(0, startIndex));
-            State.Buffer.Append(replacement);
-            State.Buffer.Append(original.AsSpan(endIndex + 1));
-            return State.Buffer.ToString();
+            return string.Concat(original.AsSpan(0, startIndex), replacement, original.AsSpan(endIndex + 1));
         }
 
         /// <summary>
@@ -366,53 +362,57 @@ namespace NTDLS.ExpressionParser
                 isUserVariableDerived = placeholder.IsUserVariableDerived;
                 return placeholder.ComputedValue;
             }
+            else if (span.Length > 1 && span[1] == '$' && (span[0] == '-' || span[0] == '+'))
+            {
+                //Explicitly signed placeholder, such as the result of "-(2+3)" or "-x".
+                var placeholder = State.GetPlaceholderCacheItem(span[2..^1]);
+                isUserVariableDerived = placeholder.IsUserVariableDerived;
+                return span[0] == '-' ? -placeholder.ComputedValue : placeholder.ComputedValue;
+            }
 
             isUserVariableDerived = false;
 
             if (Options.UseFastFloatingPointParser)
             {
-                double result = 0.0;
-                int length = span.Length;
                 int i = 0;
-                double fraction;
-                double multiplier;
                 bool isNegative = false;
 
-                if (length > 0 && (span[0] == '-' || span[0] == '+'))
+                if (span[0] == '-' || span[0] == '+')
                 {
                     isNegative = span[0] == '-';
                     i++; //Skip the explicit sign.
                 }
 
-                for (; i < length; i++)
+                ulong mantissa = 0;
+                int significantDigits = 0;
+                int fractionDigits = 0;
+                bool seenDecimal = false;
+
+                for (; i < span.Length; i++)
                 {
-                    if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
+                    int digit = span[i] - '0';
+                    if ((uint)digit <= 9)
                     {
-                        result = result * 10.0 + (span[i] - '0');
+                        if (significantDigits > 0 || digit != 0)
+                            significantDigits++;
+                        mantissa = mantissa * 10 + (uint)digit;
+                        if (seenDecimal)
+                            fractionDigits++;
                     }
-                    else if (span[i] == '.')
+                    else if (span[i] == '.' && !seenDecimal)
                     {
-                        i++; //Skip the decimal point.
-
-                        fraction = 0.0;
-                        multiplier = 1.0;
-
-                        for (; i < length; i++)
-                        {
-                            if ((span[i] - '0') >= 0 && (span[i] - '0') <= 9)
-                            {
-                                fraction = fraction * 10.0 + (span[i] - '0');
-                                multiplier *= 0.1;
-                            }
-                            else throw new FormatException("Invalid character in input string.");
-                        }
-
-                        result += fraction * multiplier;
+                        seenDecimal = true;
                     }
                     else throw new FormatException("Invalid character in input string.");
                 }
 
-                return isNegative ? -result : result;
+                //When both the mantissa and the power of ten are exactly representable, a single
+                //  division yields the correctly rounded result. Otherwise fall back to the full parser.
+                if (significantDigits <= 15 && fractionDigits < _powersOfTen.Length)
+                {
+                    double result = fractionDigits == 0 ? mantissa : mantissa / _powersOfTen[fractionDigits];
+                    return isNegative ? -result : result;
+                }
             }
 
             return double.Parse(span, CultureInfo.InvariantCulture);

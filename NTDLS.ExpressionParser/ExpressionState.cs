@@ -61,7 +61,13 @@ namespace NTDLS.ExpressionParser
         public int ConsumeNextPlaceholderCacheSlot(out string cacheKey)
         {
             int cacheSlot = _nextPlaceholderCacheSlot++;
-            cacheKey = $"${cacheSlot}$";
+            cacheKey = Utility.PlaceholderKey(cacheSlot);
+
+            if (cacheSlot >= _placeholderCache.Length) //Resize the cache if needed.
+            {
+                Array.Resize(ref _placeholderCache, (_placeholderCache.Length + 1) * 2);
+            }
+
             return cacheSlot;
         }
 
@@ -69,11 +75,6 @@ namespace NTDLS.ExpressionParser
         public string StorePlaceholderCacheItem(double? value, bool isUserVariableDerived = false)
         {
             var cacheSlot = ConsumeNextPlaceholderCacheSlot(out var cacheKey);
-
-            if (cacheSlot >= _placeholderCache.Length) //Resize the cache if needed.
-            {
-                Array.Resize(ref _placeholderCache, (_placeholderCache.Length + 1) * 2);
-            }
 
             _placeholderCache[cacheSlot] = new PlaceholderCacheItem()
             {
@@ -101,27 +102,30 @@ namespace NTDLS.ExpressionParser
 
         #endregion
 
-        public void HydrateTemplateCache(string expressionHash)
+        /// <summary>
+        /// Copies the step caches from this (evaluated) state into the shared template state so that
+        /// subsequent Expression instances of the same text start out warm. Only the first evaluation of
+        /// a template does this, after which the template is marked as hydrated and the copy is skipped.
+        /// </summary>
+        public void HydrateTemplateCache(object cacheKey)
         {
-            if (!_isTemplateCacheHydrated)
+            if (_isTemplateCacheHydrated)
+                return;
+
+            if (Utility.PersistentCaches.TryGetValue(cacheKey, out CachedState? entry) && entry != null)
             {
-                lock (this)
+                lock (entry.State)
                 {
-                    if (!_isTemplateCacheHydrated)
+                    if (!entry.State._isTemplateCacheHydrated)
                     {
-                        if (Utility.PersistentCaches.TryGetValue(expressionHash, out CachedState? entry) && entry != null)
-                        {
-                            lock (entry.State)
-                            {
-                                entry.State.ComputedStepCache.CopyFrom(ComputedStepCache);
-                                entry.State.ScanStepCache.CopyFrom(ScanStepCache);
-                                entry.State.OperationStepCache.CopyFrom(OperationStepCache);
-                            }
-                        }
-                        _isTemplateCacheHydrated = true;
+                        entry.State.ComputedStepCache.CopyFrom(ComputedStepCache);
+                        entry.State.ScanStepCache.CopyFrom(ScanStepCache);
+                        entry.State.OperationStepCache.CopyFrom(OperationStepCache);
+                        entry.State._isTemplateCacheHydrated = true;
                     }
                 }
             }
+            _isTemplateCacheHydrated = true;
         }
 
         public void Reset(Sanitized sanitized)
@@ -163,26 +167,90 @@ namespace NTDLS.ExpressionParser
             }
         }
 
+        /// <summary>
+        /// Replaces each user variable in the working text with a placeholder holding its value.
+        /// Only whole identifiers are replaced, so a variable is never substituted inside a function name,
+        /// another variable name, or a number.
+        /// </summary>
         public void ApplyParameters(Sanitized sanitized, Dictionary<string, double?> definedParameters)
         {
-            //Swap out all of the user supplied parameters.
-            foreach (var variable in sanitized.DiscoveredVariables.OrderByDescending(o => o.Length))
+            var variables = sanitized.Variables;
+            if (variables.Length == 0)
+                return;
+
+            foreach (var variable in variables)
             {
-                if (definedParameters.TryGetValue(variable, out var value))
+                if (!definedParameters.ContainsKey(variable))
+                    throw new Exception($"Undefined variable: {variable}");
+            }
+
+            //Placeholder slot assigned to each variable, allocated on first occurrence.
+            Span<int> variableSlots = variables.Length <= 64 ? stackalloc int[variables.Length] : new int[variables.Length];
+            variableSlots.Fill(-1);
+
+            var text = WorkingText.AsSpan();
+            Buffer.Clear();
+
+            int i = 0;
+            while (i < text.Length)
+            {
+                char c = text[i];
+                int start = i;
+
+                if (char.IsAsciiDigit(c) || c == '.')
                 {
-                    var cacheSlot = ConsumeNextPlaceholderCacheSlot(out var cacheKey);
-                    _placeholderCache[cacheSlot] = new PlaceholderCacheItem()
+                    //Numbers (and placeholder indexes) are copied verbatim - this mirrors how the sanitizer tokenizes.
+                    while (i < text.Length && (char.IsAsciiDigit(text[i]) || text[i] == '.'))
+                        i++;
+                    Buffer.Append(text[start..i]);
+                }
+                else if (Utility.IsValidVariableChar(c))
+                {
+                    while (i < text.Length && Utility.IsValidVariableChar(text[i]))
+                        i++;
+
+                    var identifier = text[start..i];
+                    int variableIndex = -1;
+
+                    if (i >= text.Length || text[i] != '{') //Identifiers followed by '{' are function names.
                     {
-                        ComputedValue = value ?? _options.DefaultNullValue,
-                        IsUserVariableDerived = true
-                    };
-                    WorkingText = WorkingText.Replace(variable, cacheKey);
+                        for (int v = 0; v < variables.Length; v++)
+                        {
+                            if (identifier.SequenceEqual(variables[v]))
+                            {
+                                variableIndex = v;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (variableIndex < 0)
+                    {
+                        Buffer.Append(identifier);
+                        continue;
+                    }
+
+                    if (variableSlots[variableIndex] < 0)
+                    {
+                        var cacheSlot = ConsumeNextPlaceholderCacheSlot(out _);
+                        _placeholderCache[cacheSlot] = new PlaceholderCacheItem()
+                        {
+                            ComputedValue = definedParameters[variables[variableIndex]] ?? _options.DefaultNullValue,
+                            IsUserVariableDerived = true
+                        };
+                        variableSlots[variableIndex] = cacheSlot;
+                    }
+
+                    Buffer.Append(Utility.PlaceholderKey(variableSlots[variableIndex]));
                 }
                 else
                 {
-                    throw new Exception($"Undefined variable: {variable}");
+                    Buffer.Append(c);
+                    i++;
                 }
             }
+
+            WorkingText = Buffer.ToString();
         }
     }
 }

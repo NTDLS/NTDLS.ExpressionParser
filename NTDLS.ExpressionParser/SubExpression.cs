@@ -1,12 +1,10 @@
 ﻿using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
     internal class SubExpression
     {
         private readonly Expression _parentExpression;
-        private readonly StringBuilder _buffer = new();
         public string Text { get; internal set; }
 
         public SubExpression(Expression parentExpression, string text)
@@ -15,121 +13,97 @@ namespace NTDLS.ExpressionParser
             Text = text;
         }
 
-        private int GetStartingIndexOfLastFunctionCall(out string foundFunction)
+        /// <summary>
+        /// Finds the right-most function call. Its parameter list contains no other function calls because
+        /// any nested call would have opened a later '{'. Returns -1 when there are no function calls.
+        /// </summary>
+        private int GetStartingIndexOfLastFunctionCall(out string foundFunction, out int openingBraceIndex)
         {
-            ReadOnlySpan<char> span = Text.AsSpan();
-
-            int foundIndex = -1;
-
             foundFunction = string.Empty;
+
+            openingBraceIndex = Text.LastIndexOf('{');
+            if (openingBraceIndex < 0)
+                return -1;
+
+            var span = Text.AsSpan();
+
+            int nameStart = openingBraceIndex;
+            while (nameStart > 0 && Utility.IsValidVariableChar(span[nameStart - 1]))
+                nameStart--;
+            while (nameStart < openingBraceIndex && char.IsAsciiDigit(span[nameStart]))
+                nameStart++; //Leading digits belong to a preceding number (e.g. "2max(...)"), not the function name.
+
+            var name = span[nameStart..openingBraceIndex];
 
             foreach (var function in _parentExpression.Sanitized.DiscoveredFunctions)
             {
-                int index = span.LastIndexOf(function);
-                if (index >= 0 && index > foundIndex
-                    && (index == 0 || !Utility.IsValidVariableChar(span[index - 1]))) //Must not be part of a larger function name.
+                if (name.SequenceEqual(function))
                 {
-                    foundIndex = index;
                     foundFunction = function;
+                    return nameStart;
                 }
             }
 
-            return foundIndex;
+            throw new Exception($"Undefined function: {name.ToString()}");
         }
 
         /// <summary>
-        /// Processes all functions in the expression, return true if any function was found - otherwise returns false.
+        /// Processes the right-most function in the expression, return true if any function was found - otherwise returns false.
         /// </summary>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
         private bool ProcessFunctionCall()
         {
-            int functionStartIndex = GetStartingIndexOfLastFunctionCall(out string foundFunction);
-            int functionEndIndex;
+            int functionStartIndex = GetStartingIndexOfLastFunctionCall(out string foundFunction, out int openingBraceIndex);
+            if (functionStartIndex < 0)
+                return false;
 
-            if (functionStartIndex >= 0)
+            int functionEndIndex = Text.IndexOf('}', openingBraceIndex);
+            if (functionEndIndex < 0)
+                throw new Exception($"Parentheses mismatch when parsing function: {foundFunction}");
+
+            var body = Text.AsSpan(openingBraceIndex + 1, functionEndIndex - openingBraceIndex - 1);
+
+            var parameters = body.Length == 0 ? [] : new double[body.Count(',') + 1];
+            bool foundNull = false;
+
+            for (int p = 0; p < parameters.Length; p++)
             {
-                _buffer.Clear();
+                int commaIndex = body.IndexOf(',');
+                var parameterText = commaIndex < 0 ? body : body[..commaIndex];
+                body = commaIndex < 0 ? [] : body[(commaIndex + 1)..];
 
-                int scope = 0;
+                if (parameterText.Length == 0)
+                    throw new Exception($"Empty parameter passed to function: {foundFunction}");
 
-                var parameters = new List<double>();
+                var subExpression = new SubExpression(_parentExpression, parameterText.ToString());
+                subExpression.Compute();
 
-                int i = functionStartIndex + foundFunction.Length; //Skip the function name.
-
-                bool foundNull = false;
-
-                for (; i < Text.Length; i++)
-                {
-                    if (Text[i] == ',')
-                    {
-                        var subExpression = new SubExpression(_parentExpression, _buffer.ToString());
-                        subExpression.Compute();
-
-                        var param = _parentExpression.StringToDouble(subExpression.Text, out _);
-                        foundNull = foundNull || param == null;
-                        if (param != null)
-                        {
-                            parameters.Add(param ?? 0);
-                        }
-                        _buffer.Clear();
-                    }
-                    else if (Text[i] == '{')
-                    {
-                        scope++;
-                    }
-                    else if (Text[i] == '}')
-                    {
-                        scope--;
-
-                        if (scope != 0)
-                        {
-                            throw new Exception("Unexpected function nesting.");
-                        }
-
-                        var subExpression = new SubExpression(_parentExpression, _buffer.ToString());
-                        subExpression.Compute();
-
-                        var param = _parentExpression.StringToDouble(subExpression.Text, out _);
-                        foundNull = foundNull || param == null;
-                        parameters.Add(param ?? 0);
-                        break;
-                    }
-                    else
-                    {
-                        _buffer.Append(Text[i]);
-                    }
-                }
-
-                functionEndIndex = i;
-
-                if (foundNull)
-                {
-                    StorePlaceholder(functionStartIndex, functionEndIndex, null, true);
-                    return true;
-                }
-                else if (Utility.IsNativeFunction(foundFunction))
-                {
-                    double functionResult = Utility.ComputeNativeFunction(foundFunction, parameters.ToArray());
-                    StorePlaceholder(functionStartIndex, functionEndIndex, functionResult, true);
-                }
-                else
-                {
-                    if (_parentExpression.ExpressionFunctions.TryGetValue(foundFunction, out var customFunction))
-                    {
-                        var functionResult = customFunction.Invoke(parameters.ToArray()) ?? _parentExpression.Options.DefaultNullValue;
-                        StorePlaceholder(functionStartIndex, functionEndIndex, functionResult, true);
-                    }
-                    else
-                    {
-                        throw new Exception($"Undefined function: {foundFunction}");
-                    }
-                }
-
-                return true;
+                var param = _parentExpression.StringToDouble(subExpression.Text, out _);
+                foundNull = foundNull || param == null;
+                parameters[p] = param ?? 0;
             }
 
-            return false;
+            if (foundNull)
+            {
+                StorePlaceholder(functionStartIndex, functionEndIndex, null, true);
+            }
+            else if (Utility.IsNativeFunction(foundFunction))
+            {
+                double functionResult = Utility.ComputeNativeFunction(foundFunction, parameters);
+                StorePlaceholder(functionStartIndex, functionEndIndex, functionResult, true);
+            }
+            else if (_parentExpression.ExpressionFunctions.TryGetValue(foundFunction, out var customFunction))
+            {
+                var functionResult = customFunction.Invoke(parameters) ?? _parentExpression.Options.DefaultNullValue;
+                StorePlaceholder(functionStartIndex, functionEndIndex, functionResult, true);
+            }
+            else
+            {
+                throw new Exception($"Undefined function: {foundFunction}");
+            }
+
+            return true;
         }
 
         internal string Compute()
@@ -147,12 +121,14 @@ namespace NTDLS.ExpressionParser
 
             while (true)
             {
-                //Pre-first-order:
+                //Pre-first-order (unary logical and bitwise NOT):
                 while (GetFreestandingNotOperation(out foundOperation))
                 {
                     var rightValue = GetRightValue(foundOperation.Index + 1, out int outParsedLength, out bool isUserVariableDerived);
                     isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
-                    int? calculatedResult = rightValue == null ? null : (rightValue == 0) ? 1 : 0;
+                    double? calculatedResult = rightValue == null ? null
+                        : foundOperation.Operation == "~" ? ~(int)rightValue.Value
+                        : (rightValue == 0) ? 1 : 0;
                     StorePlaceholder(foundOperation.Index, foundOperation.Index + outParsedLength, calculatedResult, isUserVariableDerived);
                 }
 
@@ -172,8 +148,8 @@ namespace NTDLS.ExpressionParser
                     continue;
                 }
 
-                //Third order operations:
-                if (GetIndexOfOperation(Utility.ThirdOrderOperations, out foundOperation))
+                //Third order operations (comparison, bitwise and logical - resolved by precedence):
+                if (GetIndexOfThirdOrderOperation(out foundOperation))
                 {
                     CollapseRightAndLeft(foundOperation.Operation, foundOperation.Index, out bool isUserVariableDerived);
                     isAnyUserVariableDerived = isAnyUserVariableDerived || isUserVariableDerived;
@@ -189,7 +165,8 @@ namespace NTDLS.ExpressionParser
             if (Text[0] == '$')
                 throw new Exception($"Expression was not fully reduced: '{Text}'. This may indicate a bug in operator parsing or a cache misalignment.");
 
-            return _parentExpression.State.StorePlaceholderCacheItem(_parentExpression.StringToDouble(Text, out _));
+            var value = _parentExpression.StringToDouble(Text, out bool isValueUserVariableDerived);
+            return _parentExpression.State.StorePlaceholderCacheItem(value, isValueUserVariableDerived);
         }
 
         internal void StorePlaceholder(int startIndex, int endIndex, double? value, bool isUserVariableDerived)
@@ -289,10 +266,21 @@ namespace NTDLS.ExpressionParser
                     {
                         i--;
                     }
+                    var cacheKey = span[(i + 1)..(operationIndex - 1)];
                     i--;
+
+                    //Check for an explicit sign: at the start of the expression or following a math character.
+                    bool isNegative = false;
+                    if (i >= 0 && (span[i] == '-' || span[i] == '+') && (i == 0 || Utility.IsMathChar(span[i - 1])))
+                    {
+                        isNegative = span[i] == '-';
+                        i--;
+                    }
+
                     outParsedLength = (operationIndex - i) - 1;
-                    var cacheKey = span.Slice(operationIndex - outParsedLength + 1, outParsedLength - 2);
                     var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(cacheKey);
+                    if (isNegative)
+                        cachedItem.ComputedValue = -cachedItem.ComputedValue;
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
 
                     //Is cachedObj.IsUserVariableDerived is true this means that we have already stored the value
@@ -362,16 +350,25 @@ namespace NTDLS.ExpressionParser
 
                 int i = 0;
 
+                bool isNegative = false;
+                if (span.Length > 1 && span[1] == '$' && (span[0] == '-' || span[0] == '+'))
+                {
+                    isNegative = span[0] == '-';
+                    i++; //Skip the explicit sign.
+                }
+
                 if (span[i] == '$')
                 {
-                    i++; //Skip the cache indicator.
+                    int keyStart = ++i; //Skip the cache indicator.
                     while (span[i] != '$')
                     {
                         i++;
                     }
+                    var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span[keyStart..i]);
                     i++;
                     outParsedLength = i;
-                    var cachedItem = _parentExpression.State.GetPlaceholderCacheItem(span.Slice(1, i - 2));
+                    if (isNegative)
+                        cachedItem.ComputedValue = -cachedItem.ComputedValue;
                     isUserVariableDerived = cachedItem.IsUserVariableDerived;
 
                     if (!cachedObj.IsUserVariableDerived)
@@ -426,33 +423,21 @@ namespace NTDLS.ExpressionParser
             else
             {
                 ReadOnlySpan<char> span = Text.AsSpan();
-                int len = span.Length - 1;
 
-                for (int i = 0; i < len; i++)
+                //Right-most first, so that stacked operators such as "!!1" or "!~1" resolve inside-out.
+                for (int i = span.Length - 1; i >= 0; i--)
                 {
                     //Make sure we have a "!' and not a "!=", these two have to be handled in different places.
-                    if (span[i] == '!' && span[i + 1] != '=')
+                    if (span[i] == '~' || (span[i] == '!' && (i + 1 >= span.Length || span[i + 1] != '=')))
                     {
                         operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
                         {
                             Index = i,
-                            Operation = "!",
+                            Operation = Utility.OperatorString(span[i]),
                             IsValid = true
                         });
                         return true;
                     }
-                }
-
-                // Check last char separately
-                if (len >= 0 && span[len] == '!')
-                {
-                    operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
-                    {
-                        Index = len,
-                        Operation = "!",
-                        IsValid = true
-                    });
-                    return true;
                 }
 
                 //No operation found.
@@ -475,6 +460,11 @@ namespace NTDLS.ExpressionParser
                 for (int i = 1; i < span.Length; i++)
                 {
                     char c = span[i];
+
+                    //A sign that directly follows another operator is unary (e.g. "2>-1"), not a binary operation.
+                    if ((c == '-' || c == '+') && Utility.IsMathChar(span[i - 1]))
+                        continue;
+
                     for (int j = 0; j < validOperations.Length; j++)
                     {
                         if (c == validOperations[j])
@@ -482,7 +472,7 @@ namespace NTDLS.ExpressionParser
                             operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
                             {
                                 Index = i,
-                                Operation = c.ToString(),
+                                Operation = Utility.OperatorString(c),
                                 IsValid = true
                             });
                             return true;
@@ -496,8 +486,10 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private bool GetIndexOfOperation(string[] validOperations, out OperationStepItem operation)
+        /// <summary>
+        /// Finds the third order operation with the highest precedence, choosing the left-most for equal precedence.
+        /// </summary>
+        private bool GetIndexOfThirdOrderOperation(out OperationStepItem operation)
         {
             if (_parentExpression.State.OperationStepCache.TryGet(out operation, out int cacheIndex))
             {
@@ -506,31 +498,50 @@ namespace NTDLS.ExpressionParser
             else
             {
                 ReadOnlySpan<char> span = Text.AsSpan();
-                for (int i = 0; i < span.Length; i++)
+                var operations = Utility.ThirdOrderOperations;
+
+                string? bestOperation = null;
+                int bestIndex = -1;
+                int bestPrecedence = int.MaxValue;
+
+                for (int i = 0; i < span.Length;)
                 {
-                    // For each position, test all operations.
-                    for (int j = 0; j < validOperations.Length; j++)
+                    string? matched = null;
+                    for (int j = 0; j < operations.Length; j++)
                     {
-                        string op = validOperations[j];
-                        ReadOnlySpan<char> opSpan = op.AsSpan();
-
-                        // If not enough room left, skip
-                        if (i + opSpan.Length > span.Length)
-                            continue;
-
-                        // Compare directly (Span sequence equality)
-                        if (span.Slice(i, opSpan.Length).SequenceEqual(opSpan))
+                        if (span[i..].StartsWith(operations[j]))
                         {
-                            // earliest operator found, stop scanning
-                            operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
-                            {
-                                Index = i,
-                                Operation = op,
-                                IsValid = true
-                            });
-                            return true;
+                            matched = operations[j];
+                            break;
                         }
                     }
+
+                    if (matched == null)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    int precedence = Utility.ThirdOrderPrecedence(matched);
+                    if (precedence < bestPrecedence)
+                    {
+                        bestPrecedence = precedence;
+                        bestOperation = matched;
+                        bestIndex = i;
+                    }
+
+                    i += matched.Length; //Skip the whole operator so "<<" is never re-matched as "<".
+                }
+
+                if (bestOperation != null)
+                {
+                    operation = _parentExpression.State.OperationStepCache.Store(cacheIndex, new OperationStepItem()
+                    {
+                        Index = bestIndex,
+                        Operation = bestOperation,
+                        IsValid = true
+                    });
+                    return true;
                 }
 
                 //No operation found.

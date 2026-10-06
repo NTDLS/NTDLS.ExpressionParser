@@ -50,14 +50,10 @@ namespace NTDLS.ExpressionParser
             "trunc"
         ];
 
-        internal static readonly char[] PreOrderOperations =
-        [
-            '!',  //Logical NOT
-        ];
+        internal static readonly HashSet<string> NativeFunctionSet = new(NativeFunctions);
 
         internal static readonly char[] FirstOrderOperations =
         [
-            '~',  //Bitwise NOT
 	        '*',  //Multiplication
 	        '/',  //Division
 	        '%'  //Modulation
@@ -69,33 +65,79 @@ namespace NTDLS.ExpressionParser
 	        '-'  //Subtraction
         ];
 
+        /// <summary>
+        /// Third order operations, ordered so that two-character operators are matched before their one-character prefixes.
+        /// </summary>
         internal static readonly string[] ThirdOrderOperations =
         [
+            "<<", //Bitwise Left Shift
+            ">>", //Bitwise Right Shift
+            "<=", //Logical Less or Equal
+            ">=", //Logical Greater or Equal
             "<>", //Logical Not Equal
-	        "|=", //Bitwise Or Equal
-	        "&=", //Bitwise And Equal
-	        "^=", //Bitwise XOR Equal
-	        "<=", //Logical Less or Equal
-	        ">=", //Logical Greater or Equal
-	        "!=", //Logical Not Equal
-
-	        "<<", //Bitwise Left Shift
-	        ">>", //Bitwise Right Shift
-
-	        "=",  //Logical Equals
-	        ">",  //Logical Greater Than
-	        "<",  //Logical Less Than
-
-	        "&&", //Logical AND
-	        "||", //Logical OR
-
-	        "|",  //Bitwise OR
-	        "&",  //Bitwise AND
-	        "^",  //Exclusive OR
+            "==", //Logical Equals
+            "!=", //Logical Not Equal
+            "&&", //Logical AND
+            "||", //Logical OR
+            "&=", //Bitwise And Equal
+            "|=", //Bitwise Or Equal
+            "^=", //Bitwise XOR Equal
+            "<",  //Logical Less Than
+            ">",  //Logical Greater Than
+            "=",  //Logical Equals
+            "&",  //Bitwise AND
+            "|",  //Bitwise OR
+            "^",  //Exclusive OR
         ];
 
-        internal static readonly char[] MathChars = ['*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~'];
-        internal static readonly string[] IntegerExclusiveOperations = ["&", "|", "^", "&=", "|=", "^=", "<<", ">>"];
+        /// <summary>
+        /// Precedence of the third order operations (mirrors C operator precedence). Lower binds tighter.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int ThirdOrderPrecedence(string operation) => operation switch
+        {
+            "<<" or ">>" => 0,
+            "<" or "<=" or ">" or ">=" => 1,
+            "=" or "==" or "!=" or "<>" => 2,
+            "&" or "&=" => 3,
+            "^" or "^=" => 4,
+            "|" or "|=" => 5,
+            "&&" => 6,
+            "||" => 7,
+            _ => throw new Exception($"Invalid operator: {operation}")
+        };
+
+        private static readonly string[] _placeholderKeys = CreatePlaceholderKeys(256);
+
+        private static string[] CreatePlaceholderKeys(int count)
+        {
+            var keys = new string[count];
+            for (int i = 0; i < count; i++)
+                keys[i] = $"${i}$";
+            return keys;
+        }
+
+        /// <summary>
+        /// Returns the "$slot$" placeholder key, avoiding an allocation for the common (small) slot numbers.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static string PlaceholderKey(int slot) => slot < _placeholderKeys.Length ? _placeholderKeys[slot] : $"${slot}$";
+
+        /// <summary>
+        /// Returns a cached string for a single character operator so that operator discovery does not allocate.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static string OperatorString(char value) => value switch
+        {
+            '*' => "*",
+            '/' => "/",
+            '%' => "%",
+            '+' => "+",
+            '-' => "-",
+            '!' => "!",
+            '~' => "~",
+            _ => value.ToString()
+        };
 
         /// <summary>
         /// Returns true when the entire span is a single placeholder of the form $digits$.
@@ -112,16 +154,21 @@ namespace NTDLS.ExpressionParser
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsNativeFunction(string value) => NativeFunctions.Contains(value);
+        internal static bool IsNativeFunction(string value) => NativeFunctionSet.Contains(value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsIntegerExclusiveOperation(string value) => (IntegerExclusiveOperations).Contains(value);
+        internal static bool IsIntegerExclusiveOperation(string value) => value switch
+        {
+            "&" or "|" or "^" or "&=" or "|=" or "^=" or "<<" or ">>" => true,
+            _ => false
+        };
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsMathChar(char value) => (MathChars).Contains(value);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsValidChar(char value) => char.IsDigit(value) || IsMathChar(value) || value == '.' || value == '(' || value == ')';
+        internal static bool IsMathChar(char value) => value switch
+        {
+            '*' or '/' or '+' or '-' or '>' or '<' or '!' or '=' or '&' or '|' or '^' or '%' or '~' => true,
+            _ => false
+        };
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsValidVariableChar(char value) => char.IsDigit(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
@@ -174,25 +221,10 @@ namespace NTDLS.ExpressionParser
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static int FastHash(string text, int optionsHash)
-        {
-            unchecked
-            {
-                int hash = 17;
-                for (int i = 0; i < text.Length; i++)
-                    hash = hash * 31 + text[i];
-
-                hash = hash * 31 + optionsHash;
-                return hash;
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int ComputeIntegerExclusivePrimitive(int leftValue, string operation, int rightValue)
         {
             return operation switch
             {
-                "!" => (leftValue != rightValue) ? 1 : 0,
                 "&" => leftValue & rightValue,
                 "&&" => (leftValue != 0 && rightValue != 0) ? 1 : 0,
                 "&=" => leftValue &= rightValue,
@@ -201,7 +233,6 @@ namespace NTDLS.ExpressionParser
                 "|" => leftValue | rightValue,
                 "||" => (leftValue != 0 || rightValue != 0) ? 1 : 0,
                 "|=" => leftValue |= rightValue,
-                "~" => ~leftValue,
                 "<<" => leftValue << rightValue,
                 "=" => (leftValue == rightValue) ? 1 : 0,
                 ">>" => leftValue >> rightValue,
@@ -219,7 +250,6 @@ namespace NTDLS.ExpressionParser
 
             var result = operation switch
             {
-                "!" => (leftValue != rightValue) ? 1 : 0,
                 "!=" => (leftValue != rightValue) ? 1 : 0,
                 "-" => (leftValue - rightValue),
                 "%" => rightValue != 0 ? (leftValue % rightValue) : throw new Exception("Divide by zero (mod)."),
@@ -232,6 +262,7 @@ namespace NTDLS.ExpressionParser
                 "<=" => (leftValue <= rightValue) ? 1 : 0,
                 "<>" => (leftValue != rightValue) ? 1 : 0,
                 "=" => (leftValue == rightValue) ? 1 : 0,
+                "==" => (leftValue == rightValue) ? 1 : 0,
                 ">" => (leftValue > rightValue) ? 1 : 0,
                 ">=" => (leftValue >= rightValue) ? 1 : 0,
                 _ => throw new Exception($"Invalid operator: {operation}"),

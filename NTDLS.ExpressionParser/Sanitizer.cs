@@ -53,7 +53,7 @@ namespace NTDLS.ExpressionParser
                     consecutiveMathChars++;
 
                     // If multiple operator characters appear in a row, that's a malformed expression.
-                    if (consecutiveMathChars > 2)
+                    if (consecutiveMathChars > 3)
                     {
                         throw new Exception($"Invalid consecutive operators near position {i}: '{c}'");
                     }
