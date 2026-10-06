@@ -16,7 +16,7 @@ namespace PerfTest
         {
             var timings = new List<double>();
 
-            for (int i = 0; i < 20; i++)
+            for (int i = 0; i < 100; i++)
             {
                 var totalTime = Perform("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10", 100000);
                 totalTime += Perform("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10", 100000);
@@ -50,7 +50,7 @@ namespace PerfTest
         {
             var timings = new List<double>();
 
-            for (int i = 0; i < 20; i++)
+            for (int i = 0; i < 100; i++)
             {
                 var totalTime = Perform("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10", 100000);
                 totalTime += Perform("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10", 100000);

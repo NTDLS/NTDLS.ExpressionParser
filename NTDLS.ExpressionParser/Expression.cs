@@ -13,15 +13,23 @@ namespace NTDLS.ExpressionParser
         private static readonly double[] _powersOfTen =
             [1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22];
 
-        private readonly string _precisionFormat;
-        private readonly Dictionary<string, double?> _definedParameters = new();
+        /// <summary>
+        /// Shared options for expressions created without any. Never exposed, so it can never be modified.
+        /// </summary>
+        private static readonly ExpressionOptions _defaultOptions = new();
+
+        private Dictionary<string, double?>? _definedParameters;
+        private Dictionary<string, ExpressionFunction>? _expressionFunctions;
 
         internal Sanitized Sanitized { get; set; }
         internal ExpressionState State { get; set; }
         internal ExpressionOptions Options { get; set; }
-        internal Dictionary<string, ExpressionFunction> ExpressionFunctions { get; private set; } = new();
+        internal Dictionary<string, ExpressionFunction> ExpressionFunctions => _expressionFunctions ??= new();
 
-        private readonly CacheKey? _cacheKey;
+        /// <summary>
+        /// The boxed CacheKey, boxed once so that each cache lookup does not box it again.
+        /// </summary>
+        private readonly object? _cacheKey;
 
         /// <summary>
         /// Identifies a compiled expression in the persistent cache. Includes every option that is baked into the
@@ -36,22 +44,18 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         public Expression(string text, ExpressionOptions? options = null)
         {
-            Options = options ?? new ExpressionOptions();
-            _precisionFormat = $"G{Options.Precision}";
+            Options = options ?? _defaultOptions;
 
             if (Options.UseCompileCache)
             {
                 _cacheKey = new CacheKey(Options.CustomHash ?? text, Options.CustomHash != null,
                     Options.UseFastFloatingPointParser, Options.DefaultNullValue);
 
-                var cached = Utility.PersistentCaches.GetOrCreate(_cacheKey, entry =>
+                //Check for a hit first to avoid allocating the factory closure on the common path.
+                if (!Utility.PersistentCaches.TryGetValue(_cacheKey, out CachedState? cached) || cached == null)
                 {
-                    entry.SlidingExpiration = TimeSpan.FromMinutes(5);
-
-                    var sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
-                    var state = new ExpressionState(sanitized, Options);
-                    return new CachedState(sanitized, state);
-                }) ?? throw new Exception("Failed to create persistent cache.");
+                    cached = CreateCachedState(_cacheKey, text, Options);
+                }
 
                 Sanitized = cached.Sanitized;
                 State = cached.State.Clone(cached.Sanitized);
@@ -61,6 +65,18 @@ namespace NTDLS.ExpressionParser
                 Sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
                 State = new ExpressionState(Sanitized, Options);
             }
+        }
+
+        private static CachedState CreateCachedState(object cacheKey, string text, ExpressionOptions options)
+        {
+            return Utility.PersistentCaches.GetOrCreate(cacheKey, entry =>
+            {
+                entry.SlidingExpiration = TimeSpan.FromMinutes(5);
+
+                var sanitized = Sanitizer.Process(text.ToLowerInvariant(), options);
+                var state = new ExpressionState(sanitized, options);
+                return new CachedState(sanitized, state);
+            }) ?? throw new Exception("Failed to create persistent cache.");
         }
 
         #endregion
@@ -204,32 +220,32 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, double? value) => _definedParameters[name.ToLowerInvariant()] = value;
+        public void SetParameter(string name, double? value) => (_definedParameters ??= new())[name.ToLowerInvariant()] = value;
 
         /// <summary>
         /// Sets a parameter in the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, int? value) => _definedParameters[name.ToLowerInvariant()] = value;
+        public void SetParameter(string name, int? value) => (_definedParameters ??= new())[name.ToLowerInvariant()] = value;
 
         /// <summary>
         /// Sets a parameter in the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, bool? value) => _definedParameters[name.ToLowerInvariant()] = value == null ? null : value == true ? 1 : 0;
+        public void SetParameter(string name, bool? value) => (_definedParameters ??= new())[name.ToLowerInvariant()] = value == null ? null : value == true ? 1 : 0;
 
         /// <summary>
         /// Removed a parameter from the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
-        public void RemoveParameter(string name) => _definedParameters.Remove(name.ToLowerInvariant());
+        public void RemoveParameter(string name) => _definedParameters?.Remove(name.ToLowerInvariant());
 
         /// <summary>
         /// Removes all parameters which have been previously added to the expression.
         /// </summary>
-        public void ClearParameters() => _definedParameters.Clear();
+        public void ClearParameters() => _definedParameters?.Clear();
 
         #endregion
 
@@ -248,12 +264,12 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         /// <param name="name">Name of the function as found in the string mathematical expression.</param>
         public void RemoveFunction(string name)
-            => ExpressionFunctions.Remove(name.ToLowerInvariant());
+            => _expressionFunctions?.Remove(name.ToLowerInvariant());
 
         /// <summary>
         /// Removes all functions which have been previously added to the expression.
         /// </summary>
-        public void ClearFunctions() => ExpressionFunctions.Clear();
+        public void ClearFunctions() => _expressionFunctions?.Clear();
 
         #endregion
 
@@ -263,6 +279,7 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         private string SwapInCacheValues(string text)
         {
+            var precisionFormat = $"G{Options.Precision}";
             var copy = text;
 
             while (true)
@@ -273,7 +290,7 @@ namespace NTDLS.ExpressionParser
                 if (begIndex >= 0 && endIndex > begIndex)
                 {
                     var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
-                    copy = copy.Replace($"${cacheKey}$", State.GetPlaceholderCacheItem(cacheKey).ComputedValue?.ToString(_precisionFormat) ?? "null");
+                    copy = copy.Replace($"${cacheKey}$", State.GetPlaceholderCacheItem(cacheKey).ComputedValue?.ToString(precisionFormat) ?? "null");
                 }
                 else
                 {

@@ -13,6 +13,7 @@ namespace NTDLS.ExpressionParser
 
             int scope = 0;
             int consecutiveMathChars = 0;
+            bool isAfterWhitespace = false;
 
             var regex = CompiledRegEx.RegExNullCheck();
 
@@ -43,9 +44,19 @@ namespace NTDLS.ExpressionParser
 
                 if (char.IsWhiteSpace(c))
                 {
+                    isAfterWhitespace = true;
                     i++;
                     continue;
                 }
+
+                //Two operands separated only by whitespace (e.g. "a b" or "2 3") are missing an operator,
+                //  reject them rather than silently joining them into a single name or number.
+                if (isAfterWhitespace && result.Length > 0 && IsOperandEnd(result[^1])
+                    && (Utility.IsValidVariableChar(c) || c == '$'))
+                {
+                    throw new Exception($"Missing operator between operands near position {i}: '{c}'");
+                }
+                isAfterWhitespace = false;
 
                 if (Utility.IsMathChar(c))
                 {
@@ -144,7 +155,17 @@ namespace NTDLS.ExpressionParser
 
                         if (char.IsWhiteSpace(c))
                         {
-                            continue;
+                            //Whitespace ends the name, but is allowed between a function name and its parenthesis.
+                            int next = i;
+                            while (next < expressionSpan.Length && char.IsWhiteSpace(expressionSpan[next]))
+                                next++;
+
+                            if (next < expressionSpan.Length && expressionSpan[next] == '(')
+                            {
+                                i = next;
+                                isFunction = true;
+                            }
+                            break;
                         }
                         else if (Utility.IsValidVariableChar(c))
                         {
@@ -177,11 +198,6 @@ namespace NTDLS.ExpressionParser
                         for (; i < expressionSpan.Length; i++)
                         {
                             c = expressionSpan[i];
-
-                            if (char.IsWhiteSpace(c))
-                            {
-                                continue;
-                            }
 
                             if (c == '(')
                             {
@@ -263,5 +279,11 @@ namespace NTDLS.ExpressionParser
 
             return sanitized;
         }
+
+        /// <summary>
+        /// Returns true when the character can be the last character of an operand (number, name, placeholder or group).
+        /// </summary>
+        private static bool IsOperandEnd(char c)
+            => Utility.IsValidVariableChar(c) || c == '.' || c == ')' || c == '}' || c == '$';
     }
 }

@@ -164,6 +164,39 @@ namespace UnitTests
             Assert.Equal(320, expr.Evaluate());
         }
 
+        [Theory]
+        [InlineData("a b")]
+        [InlineData("2 3")]
+        [InlineData("a 2")]
+        [InlineData("2 a")]
+        [InlineData("1 + max(a b, 1)")]
+        [InlineData("ma x(1)")]
+        [InlineData("1 null")]
+        [InlineData("(1) 2")]
+        public void Whitespace_Between_Operands_Is_Rejected(string text)
+        {
+            var ex = Assert.ThrowsAny<Exception>(() =>
+            {
+                var expr = new Expression(text, new ExpressionOptions { UseCompileCache = false });
+                expr.SetParameter("a", 1);
+                expr.SetParameter("b", 2);
+                expr.SetParameter("ab", 3);
+                expr.Evaluate();
+            });
+            Assert.Contains("Missing operator", ex.Message);
+        }
+
+        [Fact]
+        public void Whitespace_Still_Allowed_Where_Valid()
+        {
+            var expr = new Expression("  sin (0) + max ( a , b )  * 2 ");
+            expr.SetParameter("a", 1);
+            expr.SetParameter("b", 2);
+            Assert.Equal(4, expr.Evaluate());
+            Assert.Equal(1, Eval("2 > - 1"));
+            Assert.Equal(6, Eval("( 1 + 2 ) * 2"));
+        }
+
         [Fact]
         public void Repeated_Static_Evaluation_Is_Stable()
         {

@@ -11,7 +11,12 @@ namespace NTDLS.ExpressionParser
         public VisitorCache<OperationStepItem> OperationStepCache;
 
         public string WorkingText { get; set; } = string.Empty;
-        public readonly StringBuilder Buffer;
+        private StringBuilder? _buffer;
+
+        /// <summary>
+        /// Scratch buffer, created on first use since expressions without variables never need it.
+        /// </summary>
+        public StringBuilder Buffer => _buffer ??= new StringBuilder();
 
         private bool _isTemplateCacheHydrated = false;
 
@@ -23,7 +28,6 @@ namespace NTDLS.ExpressionParser
         public ExpressionState(Sanitized sanitized, ExpressionOptions options)
         {
             _options = options;
-            Buffer = new StringBuilder();
 
             WorkingText = sanitized.Text;
             _operationCount = sanitized.OperationCount;
@@ -45,13 +49,11 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        public ExpressionState(ExpressionOptions options, int operationCount, int preAllocation,
-            int computedStepCacheAllocated, int scanStepCacheAllocated, int operationStepCacheAllocated)
+        /// <summary>
+        /// Creates an empty state for Clone() to populate.
+        /// </summary>
+        private ExpressionState(ExpressionOptions options)
         {
-            Buffer = new StringBuilder(preAllocation);
-            ScanStepCache = new(scanStepCacheAllocated);
-            ComputedStepCache = new(computedStepCacheAllocated);
-            OperationStepCache = new(operationStepCacheAllocated);
             _options = options;
         }
 
@@ -137,14 +139,16 @@ namespace NTDLS.ExpressionParser
             OperationStepCache.Reset();
         }
 
+        /// <summary>
+        /// Creates a per-instance state from this shared template state. The step caches are shared copy-on-write
+        /// (the template only ever replaces its arrays, under this lock, and never writes into them), so a clone of
+        /// a hydrated template allocates nothing for them unless its evaluation diverges.
+        /// </summary>
         public ExpressionState Clone(Sanitized sanitized)
         {
             lock (this)
             {
-                var clone = new ExpressionState(_options, sanitized.OperationCount, WorkingText.Length * 2,
-                    Math.Max(ComputedStepCache.Allocated, _operationCount),
-                    Math.Max(ScanStepCache.Allocated, _operationCount),
-                    Math.Max(OperationStepCache.Allocated, _operationCount))
+                var clone = new ExpressionState(_options)
                 {
                     WorkingText = WorkingText,
                     _operationCount = _operationCount,
@@ -153,15 +157,12 @@ namespace NTDLS.ExpressionParser
                     _isTemplateCacheHydrated = _isTemplateCacheHydrated
                 };
 
-                clone.ComputedStepCache.CopyFrom(ComputedStepCache);
-                clone.ScanStepCache.CopyFrom(ScanStepCache);
-                clone.OperationStepCache.CopyFrom(OperationStepCache);
+                clone.ComputedStepCache.ShareFrom(ComputedStepCache);
+                clone.ScanStepCache.ShareFrom(ScanStepCache);
+                clone.OperationStepCache.ShareFrom(OperationStepCache);
 
-                for (int i = 0; i < sanitized.ConsumedPlaceholderCacheSlots; i++)
-                {
-                    //We typically do not keep placeholders, but for hard-coded NULLs in the expression we do, because they are supplied by the user.
-                    clone._placeholderCache[i] = _placeholderCache[i]; //Copy any pre-defined NULLs.
-                }
+                //We typically do not keep placeholders, but for hard-coded NULLs in the expression we do, because they are supplied by the user.
+                _placeholderCache.AsSpan(0, sanitized.ConsumedPlaceholderCacheSlots).CopyTo(clone._placeholderCache); //Copy any pre-defined NULLs.
 
                 return clone;
             }
@@ -172,7 +173,7 @@ namespace NTDLS.ExpressionParser
         /// Only whole identifiers are replaced, so a variable is never substituted inside a function name,
         /// another variable name, or a number.
         /// </summary>
-        public void ApplyParameters(Sanitized sanitized, Dictionary<string, double?> definedParameters)
+        public void ApplyParameters(Sanitized sanitized, Dictionary<string, double?>? definedParameters)
         {
             var variables = sanitized.Variables;
             if (variables.Length == 0)
@@ -180,7 +181,7 @@ namespace NTDLS.ExpressionParser
 
             foreach (var variable in variables)
             {
-                if (!definedParameters.ContainsKey(variable))
+                if (definedParameters == null || !definedParameters.ContainsKey(variable))
                     throw new Exception($"Undefined variable: {variable}");
             }
 
@@ -235,7 +236,7 @@ namespace NTDLS.ExpressionParser
                         var cacheSlot = ConsumeNextPlaceholderCacheSlot(out _);
                         _placeholderCache[cacheSlot] = new PlaceholderCacheItem()
                         {
-                            ComputedValue = definedParameters[variables[variableIndex]] ?? _options.DefaultNullValue,
+                            ComputedValue = definedParameters![variables[variableIndex]] ?? _options.DefaultNullValue,
                             IsUserVariableDerived = true
                         };
                         variableSlots[variableIndex] = cacheSlot;
