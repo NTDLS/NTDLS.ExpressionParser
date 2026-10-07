@@ -1,15 +1,14 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
     /// <summary>
-    /// A sanitized expression compiled to a postfix program, which is evaluated on a stack without
-    /// any string manipulation or allocation. Instances are immutable and safe to share between threads.
+    /// A sanitized expression compiled to a postfix program, which is evaluated on a stack without any
+    /// string manipulation or allocation. Instances are immutable and safe to share between threads.
     ///
-    /// The compiler mirrors the semantics of the string based evaluator (SubExpression): unary operators
-    /// bind tightest, then * / %, then + -, then the third order operators by Utility.ThirdOrderPrecedence,
-    /// all left associative. Any input it does not fully understand is rejected, in which case the
-    /// expression falls back to the string based evaluator.
+    /// Precedence: unary operators bind tightest, then * / %, then + -, then the third order operators by
+    /// Utility.ThirdOrderPrecedence. Binary operators are left associative. The compiler is iterative
+    /// (shunting-yard), so no depth of nesting can overflow the stack.
     /// </summary>
     internal sealed class CompiledExpression
     {
@@ -40,33 +39,77 @@ namespace NTDLS.ExpressionParser
         private readonly string[] _variables;
         private readonly int _maxStackDepth;
         private readonly int _maxParameterCount;
+        private readonly Sanitized _sanitized;
+        private readonly ExpressionOptions _options;
 
-        private CompiledExpression(Instruction[] program, string[] variables, int maxStackDepth, int maxParameterCount)
+        /// <summary>
+        /// The same program without constant folding, so that showing the work includes every operation.
+        /// Created on first use; a race only results in an identical program being compiled twice.
+        /// </summary>
+        private CompiledExpression? _unfolded;
+
+        private CompiledExpression Unfolded => _unfolded ??= new Compiler(_sanitized, _options, fold: false).Compile();
+
+        /// <summary>
+        /// The number of operations (unary operators, binary operators and function calls) that the expression
+        /// performs as written, i.e. before constant folding. A negated number literal is not counted.
+        /// </summary>
+        public int OperationCount
+        {
+            get
+            {
+                int count = 0;
+                foreach (var instruction in Unfolded._program)
+                {
+                    if (instruction.Code is not (OpCode.Constant or OpCode.Variable))
+                        count++;
+                }
+                return count;
+            }
+        }
+
+        private CompiledExpression(Instruction[] program, Sanitized sanitized, ExpressionOptions options,
+            int maxStackDepth, int maxParameterCount)
         {
             _program = program;
-            _variables = variables;
+            _sanitized = sanitized;
+            _options = options;
+            _variables = sanitized.Variables;
             _maxStackDepth = maxStackDepth;
             _maxParameterCount = maxParameterCount;
         }
 
-        /// <summary>
-        /// Compiles the sanitized expression, returning null if it can not be compiled.
-        /// </summary>
-        public static CompiledExpression? TryCompile(Sanitized sanitized, ExpressionOptions options)
-        {
-            try
-            {
-                return new Compiler(sanitized, options).Compile();
-            }
-            catch
-            {
-                return null; //Leave it to the string based evaluator, which produces the appropriate error.
-            }
-        }
+        public static CompiledExpression Compile(Sanitized sanitized, ExpressionOptions options)
+            => new Compiler(sanitized, options, fold: true).Compile();
+
+        #region Evaluation.
 
         public double? Evaluate(Dictionary<string, double?>? parameters,
-            Dictionary<string, ExpressionFunction>? functions, double? defaultNullValue)
+            Dictionary<string, ExpressionFunction>? functions)
+            => Run(parameters, functions, null);
+
+        /// <summary>
+        /// Evaluates the expression, describing each operation as it is performed.
+        /// </summary>
+        public double? Evaluate(Dictionary<string, double?>? parameters,
+            Dictionary<string, ExpressionFunction>? functions, out string showWork)
         {
+            var unfolded = Unfolded;
+
+            var work = new Work(new StringBuilder(), $"G{_options.Precision}");
+            work.Builder.AppendLine("{");
+            var result = unfolded.Run(parameters, functions, work);
+            work.Builder.Append("} = ").AppendLine(work.Format(result));
+
+            showWork = work.Builder.ToString();
+            return result;
+        }
+
+        private double? Run(Dictionary<string, double?>? parameters,
+            Dictionary<string, ExpressionFunction>? functions, Work? work)
+        {
+            double? defaultNullValue = _options.DefaultNullValue;
+
             //Every discovered variable must be defined, even if constant folding made it irrelevant.
             Span<double?> variables = _variables.Length <= 32 ? stackalloc double?[_variables.Length] : new double?[_variables.Length];
             for (int i = 0; i < _variables.Length; i++)
@@ -100,23 +143,24 @@ namespace NTDLS.ExpressionParser
                         break;
 
                     case OpCode.Negate:
-                        stack[sp - 1] = -stack[sp - 1];
-                        break;
-
                     case OpCode.LogicalNot:
-                        stack[sp - 1] = LogicalNot(stack[sp - 1]);
-                        break;
-
                     case OpCode.BitwiseNot:
-                        stack[sp - 1] = BitwiseNot(stack[sp - 1]);
+                        {
+                            var operand = stack[sp - 1];
+                            var result = ComputeUnary(instruction.Code, operand);
+                            stack[sp - 1] = result;
+                            work?.Unary(instruction.Code, operand, result);
+                        }
                         break;
 
                     case OpCode.Binary:
                         {
                             var right = stack[--sp];
                             var left = stack[sp - 1];
-                            stack[sp - 1] = left == null || right == null ? null
+                            double? result = left == null || right == null ? null
                                 : Utility.ComputeBinary(left.GetValueOrDefault(), instruction.BinaryOperator, right.GetValueOrDefault());
+                            stack[sp - 1] = result;
+                            work?.Binary(left, instruction.BinaryOperator, right, result);
                         }
                         break;
 
@@ -124,7 +168,9 @@ namespace NTDLS.ExpressionParser
                         {
                             int count = instruction.Operand;
                             sp -= count;
-                            var result = Call(instruction, stack.Slice(sp, count), parameterValues[..count], functions, defaultNullValue);
+                            var arguments = stack.Slice(sp, count);
+                            var result = Call(instruction, arguments, parameterValues[..count], functions, defaultNullValue);
+                            work?.Call(instruction.FunctionName!, arguments, result);
                             stack[sp++] = result;
                         }
                         break;
@@ -134,9 +180,18 @@ namespace NTDLS.ExpressionParser
             return stack[0];
         }
 
-        private static double? LogicalNot(double? value) => value == null ? null : value == 0 ? 1 : 0;
+        private static double? ComputeUnary(OpCode code, double? value)
+        {
+            if (value == null)
+                return null;
 
-        private static double? BitwiseNot(double? value) => value == null ? null : ~(int)value.GetValueOrDefault();
+            return code switch
+            {
+                OpCode.Negate => -value.GetValueOrDefault(),
+                OpCode.LogicalNot => value.GetValueOrDefault() == 0 ? 1 : 0,
+                _ => ~(int)value.GetValueOrDefault()
+            };
+        }
 
         private static double? Call(in Instruction instruction, ReadOnlySpan<double?> arguments, Span<double> parameterValues,
             Dictionary<string, ExpressionFunction>? functions, double? defaultNullValue)
@@ -157,263 +212,327 @@ namespace NTDLS.ExpressionParser
             throw new Exception($"Undefined function: {instruction.FunctionName}");
         }
 
+        /// <summary>
+        /// Writes one line per operation when showing the work.
+        /// </summary>
+        private sealed class Work(StringBuilder builder, string precisionFormat)
+        {
+            public readonly StringBuilder Builder = builder;
+
+            public string Format(double? value) => value?.ToString(precisionFormat) ?? "null";
+
+            public void Unary(OpCode code, double? operand, double? result)
+            {
+                char symbol = code switch { OpCode.Negate => '-', OpCode.LogicalNot => '!', _ => '~' };
+                string text = Format(operand);
+                //Parenthesize a negative operand so that "-(-3)" is not shown as "--3".
+                if (text.StartsWith('-'))
+                    text = $"({text})";
+                Builder.AppendLine($"    {symbol}{text} = {Format(result)}");
+            }
+
+            public void Binary(double? left, BinaryOperator operation, double? right, double? result)
+                => Builder.AppendLine($"    {Format(left)}{Utility.ToText(operation)}{Format(right)} = {Format(result)}");
+
+            public void Call(string functionName, ReadOnlySpan<double?> arguments, double? result)
+            {
+                Builder.Append("    ").Append(functionName).Append('(');
+                for (int i = 0; i < arguments.Length; i++)
+                {
+                    if (i > 0)
+                        Builder.Append(',');
+                    Builder.Append(Format(arguments[i]));
+                }
+                Builder.Append(") = ").AppendLine(Format(result));
+            }
+        }
+
+        #endregion
+
         #region Compiler.
 
-        private abstract class Node { }
-        private sealed class ConstantNode(double? value) : Node { public readonly double? Value = value; }
-        private sealed class VariableNode(int index) : Node { public readonly int Index = index; }
-        private sealed class UnaryNode(OpCode code, Node operand) : Node { public readonly OpCode Code = code; public readonly Node Operand = operand; }
-        private sealed class BinaryNode(BinaryOperator op, Node left, Node right) : Node
+        private sealed class Compiler(Sanitized sanitized, ExpressionOptions options, bool fold)
         {
-            public readonly BinaryOperator Operator = op; public readonly Node Left = left; public readonly Node Right = right;
-        }
-        private sealed class CallNode(string name, bool isNative, Node[] parameters) : Node
-        {
-            public readonly string Name = name; public readonly bool IsNative = isNative; public readonly Node[] Parameters = parameters;
-        }
+            private enum PendingKind : byte { Unary, Binary, Parenthesis, Call }
 
-        private sealed class Compiler(Sanitized sanitized, ExpressionOptions options)
-        {
-            /// <summary>Binding levels: 0 = * / %, 1 = + -, 2 and up = third order operators by precedence.</summary>
-            private const int LowestBindingLevel = 9;
+            /// <summary>An operator, grouping, or function call waiting on the operator stack.</summary>
+            private struct Pending
+            {
+                public PendingKind Kind;
+                public OpCode UnaryCode;
+                public BinaryOperator BinaryOperator;
+                /// <summary>Binding level of a binary operator: 0 = * / %, 1 = + -, 2 and up = third order.</summary>
+                public int Level;
+                public string FunctionName;
+                public int ParameterCount;
+            }
 
             private readonly string _text = sanitized.Text;
             private readonly string[] _variables = sanitized.Variables;
-            private int _position;
-
-            private readonly List<Instruction> _program = new();
-            private int _depth;
-            private int _maxStackDepth;
+            private readonly List<Instruction> _output = new();
+            private readonly List<Pending> _pending = new();
             private int _maxParameterCount;
 
             public CompiledExpression Compile()
             {
-                var root = ParseBinary(LowestBindingLevel);
-                if (_position != _text.Length)
-                    throw new Exception($"Unexpected character at position {_position}.");
+                bool expectOperand = true;
+                int i = 0;
 
-                Emit(root);
-                return new CompiledExpression(_program.ToArray(), _variables, _maxStackDepth, _maxParameterCount);
-            }
-
-            #region Parsing.
-
-            private char Current => _position < _text.Length ? _text[_position] : '\0';
-            private char Next => _position + 1 < _text.Length ? _text[_position + 1] : '\0';
-
-            private void Expect(char c)
-            {
-                if (Current != c)
-                    throw new Exception($"Expected '{c}' at position {_position}.");
-                _position++;
-            }
-
-            private Node ParseBinary(int level)
-            {
-                //Deeply nested input would otherwise overflow the stack, which can not be caught. This throws a
-                //  catchable exception instead, so that the expression falls back to the (iterative) string evaluator.
-                RuntimeHelpers.EnsureSufficientExecutionStack();
-
-                if (level < 0)
-                    return ParseUnary();
-
-                var left = ParseBinary(level - 1);
-
-                while (TryPeekBinaryOperator(out var operation, out int operationLevel) && operationLevel == level)
+                while (i < _text.Length)
                 {
-                    _position += operation.Length;
-                    var right = ParseBinary(level - 1);
-                    left = Fold(new BinaryNode(Utility.ToBinaryOperator(operation), left, right));
+                    char c = _text[i];
+
+                    if (expectOperand)
+                    {
+                        if (c == '+')
+                        {
+                            i++; //Unary plus has no effect.
+                        }
+                        else if (c == '-' || c == '~' || (c == '!' && (i + 1 >= _text.Length || _text[i + 1] != '=')))
+                        {
+                            _pending.Add(new Pending
+                            {
+                                Kind = PendingKind.Unary,
+                                UnaryCode = c == '-' ? OpCode.Negate : c == '!' ? OpCode.LogicalNot : OpCode.BitwiseNot
+                            });
+                            i++;
+                        }
+                        else if (c == '(')
+                        {
+                            _pending.Add(new Pending { Kind = PendingKind.Parenthesis });
+                            i++;
+                        }
+                        else if (char.IsAsciiDigit(c) || c == '.')
+                        {
+                            int start = i;
+                            while (i < _text.Length && (char.IsAsciiDigit(_text[i]) || _text[i] == '.'))
+                                i++;
+                            var value = Utility.ParseNumber(_text.AsSpan(start, i - start), options.UseFastFloatingPointParser);
+                            _output.Add(new Instruction(OpCode.Constant, constant: value));
+                            expectOperand = false;
+                        }
+                        else if (c == '$')
+                        {
+                            //Placeholders in sanitized text are only ever NULL literals.
+                            i = _text.IndexOf('$', i + 1) + 1;
+                            _output.Add(new Instruction(OpCode.Constant, constant: options.DefaultNullValue));
+                            expectOperand = false;
+                        }
+                        else if (Utility.IsValidVariableChar(c))
+                        {
+                            int start = i;
+                            while (i < _text.Length && Utility.IsValidVariableChar(_text[i]))
+                                i++;
+                            var name = _text.AsSpan(start, i - start);
+
+                            if (i < _text.Length && _text[i] == '{')
+                            {
+                                var functionName = name.ToString();
+                                i++;
+                                if (_text[i] == '}')
+                                {
+                                    i++;
+                                    EmitCall(functionName, 0);
+                                    expectOperand = false;
+                                }
+                                else
+                                {
+                                    _pending.Add(new Pending { Kind = PendingKind.Call, FunctionName = functionName });
+                                }
+                            }
+                            else
+                            {
+                                _output.Add(new Instruction(OpCode.Variable, operand: IndexOfVariable(name)));
+                                expectOperand = false;
+                            }
+                        }
+                        else
+                        {
+                            throw new Exception($"Syntax error: unexpected '{c}' at position {i} of '{_text}'.");
+                        }
+                    }
+                    else
+                    {
+                        if (c == ')')
+                        {
+                            PopUntil(PendingKind.Parenthesis);
+                            _pending.RemoveAt(_pending.Count - 1);
+                            i++;
+                        }
+                        else if (c == '}' || c == ',')
+                        {
+                            PopUntil(PendingKind.Call);
+                            var call = _pending[^1];
+                            call.ParameterCount++;
+                            i++;
+
+                            if (c == ',')
+                            {
+                                _pending[^1] = call;
+                                expectOperand = true;
+                            }
+                            else
+                            {
+                                _pending.RemoveAt(_pending.Count - 1);
+                                EmitCall(call.FunctionName, call.ParameterCount);
+                            }
+                        }
+                        else
+                        {
+                            var operation = MatchBinaryOperator(i, out int level);
+
+                            //Unary operators bind tightest; binary operators are left associative.
+                            while (_pending.Count > 0 && (_pending[^1].Kind == PendingKind.Unary
+                                || (_pending[^1].Kind == PendingKind.Binary && _pending[^1].Level <= level)))
+                            {
+                                EmitPending();
+                            }
+
+                            _pending.Add(new Pending
+                            {
+                                Kind = PendingKind.Binary,
+                                BinaryOperator = Utility.ToBinaryOperator(operation),
+                                Level = level
+                            });
+                            i += operation.Length;
+                            expectOperand = true;
+                        }
+                    }
                 }
 
-                return left;
+                while (_pending.Count > 0)
+                {
+                    if (_pending[^1].Kind is PendingKind.Parenthesis or PendingKind.Call)
+                        throw new Exception($"Syntax error: unbalanced grouping in '{_text}'.");
+                    EmitPending();
+                }
+
+                var program = _output.ToArray();
+                return new CompiledExpression(program, sanitized, options, MaxStackDepth(program), _maxParameterCount);
             }
 
-            private bool TryPeekBinaryOperator(out string operation, out int level)
+            private int IndexOfVariable(ReadOnlySpan<char> name)
             {
-                char c = Current;
-                if (c == '\0' || c == ')' || c == '}' || c == ',')
+                for (int v = 0; v < _variables.Length; v++)
                 {
-                    operation = string.Empty;
-                    level = -1;
+                    if (name.SequenceEqual(_variables[v]))
+                        return v;
+                }
+                throw new Exception($"Undefined variable: {name.ToString()}");
+            }
+
+            private string MatchBinaryOperator(int i, out int level)
+            {
+                var remaining = _text.AsSpan(i);
+                foreach (var operation in Utility.ThirdOrderOperations)
+                {
+                    if (remaining.StartsWith(operation))
+                    {
+                        level = 2 + Utility.ThirdOrderPrecedence(operation);
+                        return operation;
+                    }
+                }
+
+                char c = _text[i];
+                level = c is '*' or '/' or '%' ? 0 : c is '+' or '-' ? 1
+                    : throw new Exception($"Syntax error: unexpected '{c}' at position {i} of '{_text}'.");
+                return Utility.OperatorString(c);
+            }
+
+            private void PopUntil(PendingKind kind)
+            {
+                while (_pending.Count > 0 && _pending[^1].Kind != kind)
+                {
+                    if (_pending[^1].Kind is PendingKind.Parenthesis or PendingKind.Call)
+                        throw new Exception($"Syntax error: unbalanced grouping in '{_text}'.");
+                    EmitPending();
+                }
+                if (_pending.Count == 0)
+                    throw new Exception($"Syntax error: unbalanced grouping in '{_text}'.");
+            }
+
+            private void EmitPending()
+            {
+                var pending = _pending[^1];
+                _pending.RemoveAt(_pending.Count - 1);
+
+                if (pending.Kind == PendingKind.Unary)
+                    EmitOperation(new Instruction(pending.UnaryCode), 1);
+                else
+                    EmitOperation(new Instruction(OpCode.Binary, binaryOperator: pending.BinaryOperator), 2);
+            }
+
+            private void EmitCall(string functionName, int parameterCount)
+            {
+                _maxParameterCount = Math.Max(_maxParameterCount, parameterCount);
+                EmitOperation(new Instruction(OpCode.Call, operand: parameterCount, functionName: functionName,
+                    isNativeFunction: Utility.IsNativeFunction(functionName)), parameterCount);
+            }
+
+            /// <summary>
+            /// Appends an operation to the program, first replacing it with its computed value when all of its
+            /// operands are constant. In postfix order those operands are exactly the preceding instructions.
+            /// Operations that would throw are kept, so that the error is raised by Evaluate() rather than here.
+            /// </summary>
+            private void EmitOperation(Instruction instruction, int operandCount)
+            {
+                //A negated literal is the literal itself, so it is folded even when showing the work.
+                bool canFold = fold || (instruction.Code == OpCode.Negate && _output[^1].Code == OpCode.Constant);
+
+                if (canFold && _output.Count >= operandCount && TryFold(instruction, operandCount, out var value))
+                {
+                    _output.RemoveRange(_output.Count - operandCount, operandCount);
+                    _output.Add(new Instruction(OpCode.Constant, constant: value));
+                    return;
+                }
+
+                _output.Add(instruction);
+            }
+
+            private bool TryFold(in Instruction instruction, int operandCount, out double? value)
+            {
+                value = null;
+
+                for (int i = _output.Count - operandCount; i < _output.Count; i++)
+                {
+                    if (_output[i].Code != OpCode.Constant)
+                        return false;
+                }
+
+                if (instruction.Code == OpCode.Call
+                    && (!instruction.IsNativeFunction || !Utility.IsDeterministicNativeFunction(instruction.FunctionName!)))
+                {
                     return false;
                 }
 
-                var remaining = _text.AsSpan(_position);
-                foreach (var thirdOrder in Utility.ThirdOrderOperations)
-                {
-                    if (remaining.StartsWith(thirdOrder))
-                    {
-                        operation = thirdOrder;
-                        level = 2 + Utility.ThirdOrderPrecedence(thirdOrder);
-                        return true;
-                    }
-                }
-
-                switch (c)
-                {
-                    case '*': case '/': case '%':
-                        operation = Utility.OperatorString(c);
-                        level = 0;
-                        return true;
-                    case '+': case '-':
-                        operation = Utility.OperatorString(c);
-                        level = 1;
-                        return true;
-                }
-
-                throw new Exception($"Unexpected character '{c}' at position {_position}.");
-            }
-
-            private Node ParseUnary()
-            {
-                char c = Current;
-
-                if (c == '-' || c == '+')
-                {
-                    _position++;
-                    var operand = ParseUnary();
-                    return c == '-' ? Fold(new UnaryNode(OpCode.Negate, operand)) : operand;
-                }
-                else if (c == '!' && Next != '=')
-                {
-                    _position++;
-                    return Fold(new UnaryNode(OpCode.LogicalNot, ParseUnary()));
-                }
-                else if (c == '~')
-                {
-                    _position++;
-                    return Fold(new UnaryNode(OpCode.BitwiseNot, ParseUnary()));
-                }
-
-                return ParsePrimary();
-            }
-
-            private Node ParsePrimary()
-            {
-                char c = Current;
-
-                if (c == '(')
-                {
-                    _position++;
-                    var inner = ParseBinary(LowestBindingLevel);
-                    Expect(')');
-                    return inner;
-                }
-                else if (char.IsAsciiDigit(c) || c == '.')
-                {
-                    int start = _position;
-                    while (char.IsAsciiDigit(Current) || Current == '.')
-                        _position++;
-                    return new ConstantNode(Utility.ParseNumber(_text.AsSpan(start, _position - start), options.UseFastFloatingPointParser));
-                }
-                else if (c == '$')
-                {
-                    //Placeholders in sanitized text are only ever NULL literals.
-                    int start = ++_position;
-                    while (char.IsAsciiDigit(Current))
-                        _position++;
-                    int slot = int.Parse(_text.AsSpan(start, _position - start));
-                    Expect('$');
-                    if (slot >= sanitized.ConsumedPlaceholderCacheSlots)
-                        throw new Exception($"Unexpected placeholder: {slot}");
-                    return new ConstantNode(options.DefaultNullValue);
-                }
-                else if (Utility.IsValidVariableChar(c))
-                {
-                    int start = _position;
-                    while (Utility.IsValidVariableChar(Current))
-                        _position++;
-                    var name = _text.AsSpan(start, _position - start);
-
-                    if (Current == '{')
-                    {
-                        _position++;
-                        return ParseFunctionCall(name);
-                    }
-
-                    for (int i = 0; i < _variables.Length; i++)
-                    {
-                        if (name.SequenceEqual(_variables[i]))
-                            return new VariableNode(i);
-                    }
-                    throw new Exception($"Undefined variable: {name.ToString()}");
-                }
-
-                throw new Exception($"Unexpected character '{c}' at position {_position}.");
-            }
-
-            private Node ParseFunctionCall(ReadOnlySpan<char> name)
-            {
-                string? functionName = null;
-                foreach (var function in sanitized.DiscoveredFunctions)
-                {
-                    if (name.SequenceEqual(function))
-                    {
-                        functionName = function;
-                        break;
-                    }
-                }
-                if (functionName == null)
-                    throw new Exception($"Undefined function: {name.ToString()}");
-
-                var parameters = new List<Node>();
-                if (Current == '}')
-                {
-                    _position++;
-                }
-                else
-                {
-                    while (true)
-                    {
-                        parameters.Add(ParseBinary(LowestBindingLevel));
-                        if (Current == ',')
-                        {
-                            _position++;
-                            continue;
-                        }
-                        Expect('}');
-                        break;
-                    }
-                }
-
-                return Fold(new CallNode(functionName, Utility.IsNativeFunction(functionName), parameters.ToArray()));
-            }
-
-            #endregion
-
-            #region Constant folding.
-
-            /// <summary>
-            /// Replaces a node whose operands are all constant with its computed value. Operations that would throw
-            /// are left in place, so that the error is raised at evaluation time just like the string based evaluator.
-            /// </summary>
-            private static Node Fold(Node node)
-            {
                 try
                 {
-                    switch (node)
+                    switch (instruction.Code)
                     {
-                        case UnaryNode { Operand: ConstantNode operand } unary:
-                            return new ConstantNode(unary.Code switch
-                            {
-                                OpCode.Negate => -operand.Value,
-                                OpCode.LogicalNot => LogicalNot(operand.Value),
-                                _ => BitwiseNot(operand.Value)
-                            });
+                        case OpCode.Negate:
+                        case OpCode.LogicalNot:
+                        case OpCode.BitwiseNot:
+                            value = ComputeUnary(instruction.Code, _output[^1].Constant);
+                            return true;
 
-                        case BinaryNode { Left: ConstantNode left, Right: ConstantNode right } binary:
-                            return new ConstantNode(left.Value == null || right.Value == null ? null
-                                : Utility.ComputeBinary(left.Value.Value, binary.Operator, right.Value.Value));
+                        case OpCode.Binary:
+                            var left = _output[^2].Constant;
+                            var right = _output[^1].Constant;
+                            value = left == null || right == null ? null
+                                : Utility.ComputeBinary(left.Value, instruction.BinaryOperator, right.Value);
+                            return true;
 
-                        case CallNode { IsNative: true } call when Utility.IsDeterministicNativeFunction(call.Name)
-                            && call.Parameters.All(p => p is ConstantNode):
+                        case OpCode.Call:
+                            var parameters = new double[operandCount];
+                            for (int i = 0; i < operandCount; i++)
                             {
-                                var values = call.Parameters.Select(p => ((ConstantNode)p).Value).ToArray();
-                                if (values.Any(v => v == null))
-                                    return new ConstantNode(null);
-                                return new ConstantNode(Utility.ComputeNativeFunction(call.Name, values.Select(v => v!.Value).ToArray()));
+                                var parameter = _output[_output.Count - operandCount + i].Constant;
+                                if (parameter == null)
+                                    return true; //NULL in, NULL out.
+                                parameters[i] = parameter.Value;
                             }
+                            value = Utility.ComputeNativeFunction(instruction.FunctionName!, parameters);
+                            return true;
                     }
                 }
                 catch
@@ -421,61 +540,25 @@ namespace NTDLS.ExpressionParser
                     //Keep the operation so that it throws when evaluated.
                 }
 
-                return node;
+                return false;
             }
 
-            #endregion
-
-            #region Emitting.
-
-            private void Emit(Node node)
+            private static int MaxStackDepth(Instruction[] program)
             {
-                RuntimeHelpers.EnsureSufficientExecutionStack();
-
-                switch (node)
+                int depth = 0, max = 0;
+                foreach (var instruction in program)
                 {
-                    case ConstantNode constant:
-                        Push(new Instruction(OpCode.Constant, constant: constant.Value));
-                        break;
-
-                    case VariableNode variable:
-                        Push(new Instruction(OpCode.Variable, operand: variable.Index));
-                        break;
-
-                    case UnaryNode unary:
-                        Emit(unary.Operand);
-                        _program.Add(new Instruction(unary.Code));
-                        break;
-
-                    case BinaryNode binary:
-                        Emit(binary.Left);
-                        Emit(binary.Right);
-                        _program.Add(new Instruction(OpCode.Binary, binaryOperator: binary.Operator));
-                        _depth--;
-                        break;
-
-                    case CallNode call:
-                        foreach (var parameter in call.Parameters)
-                            Emit(parameter);
-                        _maxParameterCount = Math.Max(_maxParameterCount, call.Parameters.Length);
-                        _depth -= call.Parameters.Length;
-                        Push(new Instruction(OpCode.Call, operand: call.Parameters.Length,
-                            functionName: call.Name, isNativeFunction: call.IsNative));
-                        break;
-
-                    default:
-                        throw new Exception("Unexpected node.");
+                    depth += instruction.Code switch
+                    {
+                        OpCode.Constant or OpCode.Variable => 1,
+                        OpCode.Binary => -1,
+                        OpCode.Call => 1 - instruction.Operand,
+                        _ => 0
+                    };
+                    max = Math.Max(max, depth);
                 }
+                return max;
             }
-
-            private void Push(Instruction instruction)
-            {
-                _program.Add(instruction);
-                _depth++;
-                _maxStackDepth = Math.Max(_maxStackDepth, _depth);
-            }
-
-            #endregion
         }
 
         #endregion

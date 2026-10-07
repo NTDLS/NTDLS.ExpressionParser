@@ -52,19 +52,6 @@ namespace NTDLS.ExpressionParser
 
         internal static readonly HashSet<string> NativeFunctionSet = new(NativeFunctions);
 
-        internal static readonly char[] FirstOrderOperations =
-        [
-	        '*',  //Multiplication
-	        '/',  //Division
-	        '%'  //Modulation
-        ];
-
-        internal static readonly char[] SecondOrderOperations =
-        [
-            '+',  //Addition
-	        '-'  //Subtraction
-        ];
-
         /// <summary>
         /// Third order operations, ordered so that two-character operators are matched before their one-character prefixes.
         /// </summary>
@@ -107,22 +94,6 @@ namespace NTDLS.ExpressionParser
             _ => throw new Exception($"Invalid operator: {operation}")
         };
 
-        private static readonly string[] _placeholderKeys = CreatePlaceholderKeys(256);
-
-        private static string[] CreatePlaceholderKeys(int count)
-        {
-            var keys = new string[count];
-            for (int i = 0; i < count; i++)
-                keys[i] = $"${i}$";
-            return keys;
-        }
-
-        /// <summary>
-        /// Returns the "$slot$" placeholder key, avoiding an allocation for the common (small) slot numbers.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static string PlaceholderKey(int slot) => slot < _placeholderKeys.Length ? _placeholderKeys[slot] : $"${slot}$";
-
         /// <summary>
         /// Returns a cached string for a single character operator so that operator discovery does not allocate.
         /// </summary>
@@ -134,24 +105,8 @@ namespace NTDLS.ExpressionParser
             '%' => "%",
             '+' => "+",
             '-' => "-",
-            '!' => "!",
-            '~' => "~",
             _ => value.ToString()
         };
-
-        /// <summary>
-        /// Returns true when the entire span is a single placeholder of the form $digits$.
-        /// Rejects composite expressions like "$0$||$1$" that merely start with '$'.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsSinglePlaceholder(ReadOnlySpan<char> text)
-        {
-            if (text.Length < 3 || text[0] != '$' || text[^1] != '$')
-                return false;
-            for (int i = 1; i < text.Length - 1; i++)
-                if (!char.IsAsciiDigit(text[i])) return false;
-            return true;
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsNativeFunction(string value) => NativeFunctionSet.Contains(value);
@@ -299,9 +254,7 @@ namespace NTDLS.ExpressionParser
         private static readonly string[] _binaryOperatorText =
             ["*", "/", "%", "+", "-", "<<", ">>", "<", "<=", ">", ">=", "=", "==", "!=", "<>", "&", "&=", "^", "^=", "|", "|=", "&&", "||"];
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static double ComputePrivative(double leftValue, string operation, double rightValue)
-            => ComputeBinary(leftValue, ToBinaryOperator(operation), rightValue);
+        internal static string ToText(BinaryOperator operation) => _binaryOperatorText[(int)operation];
 
         internal static double ComputeBinary(double leftValue, BinaryOperator operation, double rightValue)
         {

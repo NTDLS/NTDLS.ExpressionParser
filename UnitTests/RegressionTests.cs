@@ -233,9 +233,51 @@ namespace UnitTests
         [Fact]
         public void Extremely_Nested_Expression_Does_Not_Overflow_Stack()
         {
-            //Too deep for the recursive compiler, must fall back to the string evaluator rather than crash the process.
-            var text = new string('(', 5000) + "1" + new string(')', 5000);
+            //Sanitizing, validating and compiling are all iterative, so nesting depth is unlimited.
+            var text = new string('(', 100_000) + "1" + new string(')', 100_000);
             Assert.Equal(1, Eval(text));
+        }
+
+        [Fact]
+        public void Extremely_Nested_Functions_Do_Not_Overflow_Stack()
+        {
+            var text = string.Concat(Enumerable.Repeat("abs(", 20_000)) + "-1" + new string(')', 20_000);
+            Assert.Equal(1, Eval(text));
+        }
+
+        [Fact]
+        public void ShowWork_Lists_Each_Operation_In_Order()
+        {
+            //Constant steps are shown, even though Evaluate() folds them away.
+            var result = Expression.Evaluate("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10", out string showWork);
+            Assert.Equal(6140750, result);
+            Assert.Equal(string.Join(Environment.NewLine,
+                "{",
+                "    5+1000 = 1005",
+                "    1005+10 = 1015",
+                "    1015*60.5 = 61407.5",
+                "    10*61407.5 = 614075",
+                "    614075*10 = 6140750",
+                "} = 6140750",
+                ""), showWork);
+        }
+
+        [Fact]
+        public void ShowWork_Shows_Variables_Functions_And_Nulls()
+        {
+            var expr = new Expression("max(a, 2) * -(b + 1) + c");
+            expr.SetParameter("a", 3);
+            expr.SetParameter("b", 2);
+            expr.SetParameter("c", (double?)null);
+            var result = expr.Evaluate(out string showWork);
+
+            Assert.Null(result);
+            Assert.Contains("max(3,2) = 3", showWork);
+            Assert.Contains("2+1 = 3", showWork);
+            Assert.Contains("-3 = -3", showWork);
+            Assert.Contains("3*-3 = -9", showWork);
+            Assert.Contains("-9+null = null", showWork);
+            Assert.EndsWith("} = null" + Environment.NewLine, showWork);
         }
 
         [Theory]
@@ -275,6 +317,17 @@ namespace UnitTests
             var ex = Assert.ThrowsAny<Exception>(() => new Expression("$0$ + 1"));
             Assert.Contains("'$'", ex.Message);
         }
+
+        [Theory]
+        [InlineData("10 * ((5 + 1000 + ( 10 )) *  60.5) * 10", 5)] //Counted as written, even though it folds to a constant.
+        [InlineData("1", 0)]
+        [InlineData("-5", 0)] //A negated literal is just a number.
+        [InlineData("-(5)", 0)] //Still just the number -5.
+        [InlineData("-(5 + 1)", 2)]
+        [InlineData("!a && max(a, 2, 3) > -a", 5)] //!, max(), -, >, &&
+        [InlineData("pi()", 1)]
+        public void Operation_Count(string text, int expected)
+            => Assert.Equal(expected, new Expression(text).OperationCount);
 
         [Fact]
         public void Repeated_Static_Evaluation_Is_Stable()

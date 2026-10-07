@@ -13,19 +13,14 @@ namespace NTDLS.ExpressionParser
                 throw new Exception($"Unhandled character '$' at position {reservedIndex}.");
             }
 
-            var sanitized = ProcessScope(expressionText, options);
-            Validate(sanitized);
-            return sanitized;
-        }
-
-        private static Sanitized ProcessScope(string expressionText, ExpressionOptions options)
-        {
             var sanitized = new Sanitized();
 
             var result = new StringBuilder();
             var buffer = new StringBuilder();
 
-            int scope = 0;
+            //Open groupings: '(' for parentheses, '{' for function calls (whose parentheses are emitted as braces).
+            //  This is tracked explicitly, rather than by recursion, so that no depth of nesting can overflow the stack.
+            var brackets = new Stack<char>();
             int consecutiveMathChars = 0;
             bool isAfterWhitespace = false;
 
@@ -102,7 +97,7 @@ namespace NTDLS.ExpressionParser
 
                 if (c == ',')
                 {
-                    if (scope == 0)
+                    if (brackets.Count == 0 || brackets.Peek() != '{')
                     {
                         throw new Exception("Unexpected comma found in expression.");
                     }
@@ -113,20 +108,19 @@ namespace NTDLS.ExpressionParser
                 else if (c == '(')
                 {
                     sanitized.OperationCount++;
-                    scope++;
+                    brackets.Push('(');
                     result.Append(expressionSpan[i++]);
                     continue;
                 }
                 else if (c == ')')
                 {
-                    scope--;
-
-                    if (scope < 0)
+                    if (brackets.Count == 0)
                     {
                         throw new Exception($"Scope fell below zero while sanitizing input.");
                     }
 
-                    result.Append(expressionSpan[i++]);
+                    result.Append(brackets.Pop() == '{' ? '}' : ')');
+                    i++;
                     continue;
                 }
                 else if (Utility.IsMathChar(c))
@@ -208,64 +202,12 @@ namespace NTDLS.ExpressionParser
 
                     if (isFunction)
                     {
-                        result.Append(functionOrVariableName); //Append the function name to the expression.
+                        //The function's parentheses are emitted as braces, so that calls are distinguishable from grouping.
+                        result.Append(functionOrVariableName).Append('{');
                         sanitized.OperationCount++;
                         sanitized.DiscoveredFunctions.Add(functionOrVariableName);
-
-                        buffer.Clear();
-
-                        //If its a function, then lets find the opening and closing parenthesizes and replace them with curly braces.
-                        int functionScope = 0;
-
-                        for (; i < expressionSpan.Length; i++)
-                        {
-                            c = expressionSpan[i];
-
-                            if (c == '(')
-                            {
-                                functionScope++;
-                            }
-                            else if (c == ')')
-                            {
-                                functionScope--;
-
-                                if (functionScope == 0)
-                                {
-                                    buffer.Append(c);
-                                    i++; //Consume the closing paren.
-                                    break;
-                                }
-                            }
-                            else if (c == ',')
-                            {
-                                sanitized.OperationCount++;
-                            }
-
-                            buffer.Append(c);
-                        }
-
-                        if (functionScope != 0)
-                        {
-                            throw new Exception($"Parenthesizes mismatch when parsing function scope: {functionOrVariableName}");
-                        }
-
-                        var subSanitized = ProcessScope(buffer.ToString(), options);
-
-                        var functionParameterString = subSanitized.Text;
-                        sanitized.OperationCount += subSanitized.OperationCount;
-
-                        foreach (var variable in subSanitized.DiscoveredVariables)
-                            sanitized.DiscoveredVariables.Add(variable);
-
-                        foreach (var function in subSanitized.DiscoveredFunctions)
-                            sanitized.DiscoveredFunctions.Add(function);
-
-                        if (functionParameterString.StartsWith('(') == false || functionParameterString.EndsWith(')') == false)
-                        {
-                            throw new Exception($"The function scope should be enclosed in parenthesizes.");
-                        }
-
-                        result.AppendFormat("{{{0}}}", functionParameterString[1..^1]);
+                        brackets.Push('{');
+                        i++; //Consume the opening parenthesis.
                     }
                     else
                     {
@@ -287,7 +229,7 @@ namespace NTDLS.ExpressionParser
                 }
             }
 
-            if (scope != 0)
+            if (brackets.Count != 0)
             {
                 throw new Exception($"Scope mismatch while sanitizing input.");
             }
@@ -299,6 +241,7 @@ namespace NTDLS.ExpressionParser
 
             sanitized.Text = result.ToString();
 
+            Validate(sanitized);
             return sanitized;
         }
 

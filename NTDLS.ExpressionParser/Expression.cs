@@ -1,6 +1,4 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
-using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace NTDLS.ExpressionParser
 {
@@ -17,26 +15,10 @@ namespace NTDLS.ExpressionParser
         private Dictionary<string, double?>? _definedParameters;
         private Dictionary<string, ExpressionFunction>? _expressionFunctions;
 
-        private readonly CachedState? _template;
-        private readonly CompiledExpression? _compiled;
-        private ExpressionState? _state;
+        private readonly CompiledExpression _compiled;
 
-        internal Sanitized Sanitized { get; set; }
         internal ExpressionOptions Options { get; set; }
-
-        /// <summary>
-        /// State for the string based evaluator, created on first use. It is not needed when the expression
-        /// was compiled, unless the work is being shown.
-        /// </summary>
-        internal ExpressionState State => _state ??= _template != null
-            ? _template.State.Clone(_template.Sanitized)
-            : new ExpressionState(Sanitized, Options);
         internal Dictionary<string, ExpressionFunction> ExpressionFunctions => _expressionFunctions ??= new();
-
-        /// <summary>
-        /// The boxed CacheKey, boxed once so that each cache lookup does not box it again.
-        /// </summary>
-        private readonly object? _cacheKey;
 
         /// <summary>
         /// Identifies a compiled expression in the persistent cache. Includes every option that is baked into the
@@ -55,35 +37,32 @@ namespace NTDLS.ExpressionParser
 
             if (Options.UseCompileCache)
             {
-                _cacheKey = new CacheKey(Options.CustomHash ?? text, Options.CustomHash != null,
+                object cacheKey = new CacheKey(Options.CustomHash ?? text, Options.CustomHash != null,
                     Options.UseFastFloatingPointParser, Options.DefaultNullValue);
 
                 //Check for a hit first to avoid allocating the factory closure on the common path.
-                if (!Utility.PersistentCaches.TryGetValue(_cacheKey, out CachedState? cached) || cached == null)
+                if (!Utility.PersistentCaches.TryGetValue(cacheKey, out CompiledExpression? compiled) || compiled == null)
                 {
-                    cached = CreateCachedState(_cacheKey, text, Options);
+                    compiled = CreateCachedCompilation(cacheKey, text, Options);
                 }
 
-                _template = cached;
-                _compiled = cached.Compiled;
-                Sanitized = cached.Sanitized;
+                _compiled = compiled;
             }
             else
             {
-                Sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
-                _compiled = CompiledExpression.TryCompile(Sanitized, Options);
+                _compiled = Compile(text, Options);
             }
         }
 
-        private static CachedState CreateCachedState(object cacheKey, string text, ExpressionOptions options)
+        private static CompiledExpression Compile(string text, ExpressionOptions options)
+            => CompiledExpression.Compile(Sanitizer.Process(text.ToLowerInvariant(), options), options);
+
+        private static CompiledExpression CreateCachedCompilation(object cacheKey, string text, ExpressionOptions options)
         {
             return Utility.PersistentCaches.GetOrCreate(cacheKey, entry =>
             {
                 entry.SlidingExpiration = TimeSpan.FromMinutes(5);
-
-                var sanitized = Sanitizer.Process(text.ToLowerInvariant(), options);
-                var state = new ExpressionState(sanitized, options);
-                return new CachedState(sanitized, state, CompiledExpression.TryCompile(sanitized, options));
+                return Compile(text, options);
             }) ?? throw new Exception("Failed to create persistent cache.");
         }
 
@@ -92,87 +71,24 @@ namespace NTDLS.ExpressionParser
         #region Evaluate.
 
         /// <summary>
+        /// The number of operations (unary operators, binary operators and function calls) that the expression
+        /// performs as written, before any constant folding. For example "10 * (5 + 1000)" performs 2.
+        /// </summary>
+        public int OperationCount => _compiled.OperationCount;
+
+        /// <summary>
         /// Evaluates the expression, processing all variables and functions.
         /// </summary>
         public double? Evaluate()
-        {
-            if (_compiled != null)
-                return _compiled.Evaluate(_definedParameters, _expressionFunctions, Options.DefaultNullValue);
-
-            return EvaluateText();
-        }
-
-        /// <summary>
-        /// Evaluates the expression using the string based evaluator.
-        /// </summary>
-        private double? EvaluateText()
-        {
-            State.Reset(Sanitized);
-            State.ApplyParameters(Sanitized, _definedParameters);
-
-            bool isComplete;
-            do
-            {
-                //Get a sub-expression from the whole expression.
-                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
-                //Compute the sub-expression.
-                var resultString = subExpression.Compute();
-                //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
-                State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
-            } while (!isComplete);
-
-            if (_cacheKey != null)
-                State.HydrateTemplateCache(_cacheKey);
-
-            if (Utility.IsSinglePlaceholder(State.WorkingText))
-                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
-
-            return StringToDouble(State.WorkingText, out _);
-        }
+            => _compiled.Evaluate(_definedParameters, _expressionFunctions);
 
         /// <summary>
         /// Evaluates the expression, processing all variables and functions.
         /// </summary>
-        /// <param name="showWork">Output parameter for the operational explanation.</param>
+        /// <param name="showWork">Output parameter for the operational explanation: each operation, in the order performed.</param>
         /// <returns></returns>
         public double? Evaluate(out string showWork)
-        {
-            State.Reset(Sanitized);
-            State.ApplyParameters(Sanitized, _definedParameters);
-
-            var work = new StringBuilder();
-
-            work.AppendLine("{");
-
-            bool isComplete;
-            do
-            {
-                //Get a sub-expression from the whole expression.
-                isComplete = AcquireSubexpression(out int startIndex, out int endIndex, out var subExpression);
-
-                string friendlySubExpression = SwapInCacheValues(subExpression.Text);
-                work.Append("    " + friendlySubExpression);
-
-                //Compute the sub-expression.
-                var resultString = subExpression.Compute();
-
-                work.AppendLine($" = {SwapInCacheValues(resultString)}");
-
-                //Replace the sub-expression in the whole expression with the result from the sub-expression computation.
-                State.WorkingText = ReplaceRange(State.WorkingText, startIndex, endIndex, resultString);
-            } while (!isComplete);
-
-            work.AppendLine($"}} = {SwapInCacheValues(State.WorkingText)}");
-
-            showWork = work.ToString();
-            if (_cacheKey != null)
-                State.HydrateTemplateCache(_cacheKey);
-
-            if (Utility.IsSinglePlaceholder(State.WorkingText))
-                return State.GetPlaceholderCacheItem(State.WorkingText.AsSpan()[1..^1]).ComputedValue;
-
-            return StringToDouble(State.WorkingText, out _);
-        }
+            => _compiled.Evaluate(_definedParameters, _expressionFunctions, out showWork);
 
         /// <summary>
         /// Evaluates a mathematical expression.
@@ -291,123 +207,5 @@ namespace NTDLS.ExpressionParser
         public void ClearFunctions() => _expressionFunctions?.Clear();
 
         #endregion
-
-        /// <summary>
-        /// Replaces placeholders in the input text with their corresponding precomputed cache values.
-        /// This function is only used when showing work, so performance is not critical.
-        /// </summary>
-        private string SwapInCacheValues(string text)
-        {
-            var precisionFormat = $"G{Options.Precision}";
-            var copy = text;
-
-            while (true)
-            {
-                int begIndex = copy.IndexOf('$');
-                int endIndex = copy.IndexOf('$', begIndex + 1);
-
-                if (begIndex >= 0 && endIndex > begIndex)
-                {
-                    var cacheKey = copy.Substring(begIndex + 1, (endIndex - begIndex) - 1);
-                    copy = copy.Replace($"${cacheKey}$", State.GetPlaceholderCacheItem(cacheKey).ComputedValue?.ToString(precisionFormat) ?? "null");
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            return copy;
-        }
-
-        internal string ReplaceRange(string original, int startIndex, int endIndex, string replacement)
-        {
-            return string.Concat(original.AsSpan(0, startIndex), replacement, original.AsSpan(endIndex + 1));
-        }
-
-        /// <summary>
-        /// Gets a sub-expression from WorkingText and replaces it with a token.
-        /// </summary>
-        /// <returns></returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool AcquireSubexpression(out int outStartIndex, out int outEndIndex, out SubExpression outSubExpression)
-        {
-            int lastParenIndex = State.WorkingText.LastIndexOf('(');
-
-            if (lastParenIndex >= 0)
-            {
-                outStartIndex = lastParenIndex;
-
-                int scope = 0;
-                int i = lastParenIndex;
-
-                for (; i < State.WorkingText.Length; i++)
-                {
-                    char c = State.WorkingText[i];
-
-                    //if (char.IsWhiteSpace(c)) //Sanitization step should have already removed whitespace.
-                    //    continue;
-
-                    if (c == '(')
-                    {
-                        scope++;
-                    }
-                    else if (c == ')')
-                    {
-                        scope--;
-                        if (scope == 0)
-                            break;
-                    }
-                }
-
-                if (scope != 0)
-                    throw new Exception("Parentheses mismatch when parsing subexpression.");
-
-                outEndIndex = i;
-
-                var subExprSpan = State.WorkingText.AsSpan(outStartIndex, outEndIndex - outStartIndex + 1);
-
-                if (subExprSpan[0] != '(' || subExprSpan[^1] != ')')
-                    throw new Exception("Sub-expression should be enclosed in parentheses.");
-
-                outSubExpression = new SubExpression(this, subExprSpan.ToString());
-                return false;
-            }
-            else
-            {
-                outStartIndex = 0;
-                outEndIndex = State.WorkingText.Length - 1;
-                outSubExpression = new SubExpression(this, State.WorkingText);
-                return true;
-            }
-        }
-
-        /// <summary>
-        /// Converts a string or value of a stored cache key into a double.
-        /// </summary>
-        internal double? StringToDouble(ReadOnlySpan<char> span, out bool isUserVariableDerived)
-        {
-            if (span.Length == 0)
-            {
-                isUserVariableDerived = false;
-                return null;
-            }
-            else if (span[0] == '$')
-            {
-                var placeholder = State.GetPlaceholderCacheItem(span[1..^1]);
-                isUserVariableDerived = placeholder.IsUserVariableDerived;
-                return placeholder.ComputedValue;
-            }
-            else if (span.Length > 1 && span[1] == '$' && (span[0] == '-' || span[0] == '+'))
-            {
-                //Explicitly signed placeholder, such as the result of "-(2+3)" or "-x".
-                var placeholder = State.GetPlaceholderCacheItem(span[2..^1]);
-                isUserVariableDerived = placeholder.IsUserVariableDerived;
-                return span[0] == '-' ? -placeholder.ComputedValue : placeholder.ComputedValue;
-            }
-
-            isUserVariableDerived = false;
-            return Utility.ParseNumber(span, Options.UseFastFloatingPointParser);
-        }
     }
 }
