@@ -66,7 +66,7 @@ namespace NTDLS.ExpressionParser
         }
 
         private static CompiledExpression Compile(string text, ExpressionOptions options)
-            => CompiledExpression.Compile(Sanitizer.Process(text.ToLowerInvariant(), options), options);
+            => CompiledExpression.Compile(text, options);
 
         private static CompiledExpression CreateCachedCompilation(object cacheKey, string text, ExpressionOptions options)
         {
@@ -189,7 +189,7 @@ namespace NTDLS.ExpressionParser
         /// <param name="value">Value of the variable.</param>
         public void SetParameter(string name, double? value)
         {
-            int index = _compiled.IndexOfVariable(name.ToLowerInvariant());
+            int index = _compiled.IndexOfVariable(name);
             if (index < 0)
                 return; //The expression does not use this variable.
 
@@ -221,7 +221,7 @@ namespace NTDLS.ExpressionParser
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         public void RemoveParameter(string name)
         {
-            int index = _compiled.IndexOfVariable(name.ToLowerInvariant());
+            int index = _compiled.IndexOfVariable(name);
             if (index >= 0 && _isVariableDefined[index])
             {
                 _isVariableDefined[index] = false;

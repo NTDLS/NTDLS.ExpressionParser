@@ -94,20 +94,6 @@ namespace NTDLS.ExpressionParser
             _ => throw new Exception($"Invalid operator: {operation}")
         };
 
-        /// <summary>
-        /// Returns a cached string for a single character operator so that operator discovery does not allocate.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static string OperatorString(char value) => value switch
-        {
-            '*' => "*",
-            '/' => "/",
-            '%' => "%",
-            '+' => "+",
-            '-' => "-",
-            _ => value.ToString()
-        };
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsNativeFunction(string value) => NativeFunctionSet.Contains(value);
 
@@ -117,56 +103,6 @@ namespace NTDLS.ExpressionParser
             '*' or '/' or '+' or '-' or '>' or '<' or '!' or '=' or '&' or '|' or '^' or '%' or '~' => true,
             _ => false
         };
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsValidVariableChar(char value) => char.IsDigit(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsNumeric(ReadOnlySpan<char> sText)
-        {
-            int iRPos = 0;
-            bool isFloatingPoint = false;
-
-            if (sText.Length == 0)
-            {
-                return false;
-            }
-
-            if (sText[iRPos] == '-' || sText[iRPos] == '+') //Explicit positive or negative number.
-            {
-                iRPos++;
-            }
-
-            for (; iRPos < sText.Length; iRPos++)
-            {
-                if (!char.IsDigit(sText[iRPos]))
-                {
-                    if (sText[iRPos] == '.')
-                    {
-                        if (iRPos == sText.Length - 1) //Decimal cannot be the last character.
-                        {
-                            return false;
-                        }
-                        if (iRPos == 0 || (iRPos == 1 && sText[0] == '-')) //Decimal cannot be the first character.
-                        {
-                            return false;
-                        }
-
-                        if (isFloatingPoint) //More than one decimal is not allowed.
-                        {
-                            return false;
-                        }
-                        isFloatingPoint = true;
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        }
 
         private static readonly double[] _powersOfTen =
             [1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22];

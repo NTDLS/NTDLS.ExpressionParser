@@ -3,12 +3,14 @@
 namespace NTDLS.ExpressionParser
 {
     /// <summary>
-    /// A sanitized expression compiled to a postfix program, which is evaluated on a stack without any
-    /// string manipulation or allocation. Instances are immutable and safe to share between threads.
+    /// An expression compiled to a postfix program, which is evaluated on a stack without any string
+    /// manipulation or allocation. Instances are immutable and safe to share between threads.
+    ///
+    /// The expression text is parsed, validated and compiled in a single pass (shunting-yard), which is
+    /// iterative so that no depth of nesting can overflow the stack.
     ///
     /// Precedence: unary operators bind tightest, then * / %, then + -, then the third order operators by
-    /// Utility.ThirdOrderPrecedence. Binary operators are left associative. The compiler is iterative
-    /// (shunting-yard), so no depth of nesting can overflow the stack.
+    /// Utility.ThirdOrderPrecedence. Binary operators are left associative.
     /// </summary>
     internal sealed class CompiledExpression
     {
@@ -37,10 +39,9 @@ namespace NTDLS.ExpressionParser
 
         private readonly Instruction[] _program;
         private readonly string[] _variables;
-        private readonly Dictionary<string, int> _variableIndexes;
         private readonly int _maxStackDepth;
         private readonly int _maxParameterCount;
-        private readonly Sanitized _sanitized;
+        private readonly string _text;
         private readonly ExpressionOptions _options;
 
         /// <summary>
@@ -49,7 +50,7 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         private CompiledExpression? _unfolded;
 
-        private CompiledExpression Unfolded => _unfolded ??= new Compiler(_sanitized, _options, fold: false).Compile();
+        private CompiledExpression Unfolded => _unfolded ??= new Compiler(_text, _options, fold: false).Compile();
 
         /// <summary>
         /// The number of operations (unary operators, binary operators and function calls) that the expression
@@ -69,22 +70,22 @@ namespace NTDLS.ExpressionParser
             }
         }
 
-        private CompiledExpression(Instruction[] program, Sanitized sanitized, ExpressionOptions options,
+        private CompiledExpression(Instruction[] program, string[] variables, string text, ExpressionOptions options,
             int maxStackDepth, int maxParameterCount)
         {
             _program = program;
-            _sanitized = sanitized;
+            _variables = variables;
+            _text = text;
             _options = options;
-            _variables = sanitized.Variables;
-            _variableIndexes = new(_variables.Length);
-            for (int i = 0; i < _variables.Length; i++)
-                _variableIndexes[_variables[i]] = i;
             _maxStackDepth = maxStackDepth;
             _maxParameterCount = maxParameterCount;
         }
 
-        public static CompiledExpression Compile(Sanitized sanitized, ExpressionOptions options)
-            => new Compiler(sanitized, options, fold: true).Compile();
+        /// <summary>
+        /// Parses and compiles the expression text, throwing for any syntax error.
+        /// </summary>
+        public static CompiledExpression Compile(string text, ExpressionOptions options)
+            => new Compiler(text, options, fold: true).Compile();
 
         /// <summary>
         /// The number of distinct variables. Variable values are passed to Evaluate() by index.
@@ -92,9 +93,18 @@ namespace NTDLS.ExpressionParser
         public int VariableCount => _variables.Length;
 
         /// <summary>
-        /// Returns the index of the (lower case) variable, or -1 when the expression does not use it.
+        /// Returns the index of the variable (case insensitive), or -1 when the expression does not use it.
+        /// Expressions have few variables, so a linear search is faster than a dictionary to build and query.
         /// </summary>
-        public int IndexOfVariable(string name) => _variableIndexes.TryGetValue(name, out int index) ? index : -1;
+        public int IndexOfVariable(string name)
+        {
+            for (int i = 0; i < _variables.Length; i++)
+            {
+                if (string.Equals(_variables[i], name, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+            return -1;
+        }
 
         public string VariableName(int index) => _variables[index];
 
@@ -259,7 +269,7 @@ namespace NTDLS.ExpressionParser
 
         #region Compiler.
 
-        private sealed class Compiler(Sanitized sanitized, ExpressionOptions options, bool fold)
+        private sealed class Compiler(string text, ExpressionOptions options, bool fold)
         {
             private enum PendingKind : byte { Unary, Binary, Parenthesis, Call }
 
@@ -275,119 +285,163 @@ namespace NTDLS.ExpressionParser
                 public int ParameterCount;
             }
 
-            private readonly string _text = sanitized.Text;
-            private readonly string[] _variables = sanitized.Variables;
-            private readonly List<Instruction> _output = new();
-            private readonly List<Pending> _pending = new();
+            /// <summary>
+            /// More operator characters than this in a row (ignoring whitespace) is rejected as malformed.
+            /// </summary>
+            private const int MaxConsecutiveOperatorChars = 3;
+
+            private readonly string _text = text;
+            /// <summary>
+            /// Working lists, reused by each thread's compilations to avoid allocating them for every expression.
+            /// Compilation never runs re-entrantly on a thread, so one set per thread is enough.
+            /// </summary>
+            [ThreadStatic] private static List<Instruction>? t_output;
+            [ThreadStatic] private static List<Pending>? t_pending;
+            [ThreadStatic] private static List<string>? t_variables;
+
+            /// <summary>
+            /// Lists that grew beyond this (from an unusually large expression) are not kept for reuse.
+            /// </summary>
+            private const int MaxRetainedCapacity = 256;
+
+            private readonly List<Instruction> _output = Rent(ref t_output);
+            private readonly List<Pending> _pending = Rent(ref t_pending);
+            private readonly List<string> _variables = Rent(ref t_variables);
+
+            private static List<T> Rent<T>(ref List<T>? cached)
+            {
+                var list = cached ?? new List<T>(16);
+                cached = null; //Taken, until returned.
+                list.Clear();
+                return list;
+            }
+
+            private static void Return<T>(ref List<T>? cached, List<T> list)
+            {
+                if (list.Capacity <= MaxRetainedCapacity)
+                {
+                    list.Clear(); //Don't keep strings or function names alive.
+                    cached = list;
+                }
+            }
             private int _maxParameterCount;
+
+            private int _position;
+            private int _consecutiveOperatorChars;
+
+            private Exception SyntaxError(string problem, int position)
+                => new($"Syntax error: {problem} at position {position} of '{_text}'.");
 
             public CompiledExpression Compile()
             {
-                bool expectOperand = true;
-                int i = 0;
-
-                while (i < _text.Length)
+                try
                 {
-                    char c = _text[i];
+                    return CompileExpression();
+                }
+                finally
+                {
+                    Return(ref t_output, _output);
+                    Return(ref t_pending, _pending);
+                    Return(ref t_variables, _variables);
+                }
+            }
+
+            private CompiledExpression CompileExpression()
+            {
+                bool expectOperand = true;
+                bool isAfterOpenParenthesis = false;
+
+                while (true)
+                {
+                    SkipWhitespace();
+                    if (_position >= _text.Length)
+                        break;
+
+                    char c = _text[_position];
+
+                    if (c == '$')
+                    {
+                        //Reserved, as it once delimited internal placeholders.
+                        throw new Exception($"Unhandled character '$' at position {_position}.");
+                    }
+
+                    if (!Utility.IsMathChar(c))
+                        _consecutiveOperatorChars = 0;
 
                     if (expectOperand)
                     {
-                        if (c == '+')
+                        bool wasAfterOpenParenthesis = isAfterOpenParenthesis;
+                        isAfterOpenParenthesis = false;
+
+                        if (c == '+' || c == '-')
                         {
-                            i++; //Unary plus has no effect.
+                            //Consecutive signs multiply, so a run of them collapses to a single sign.
+                            if (ConsumeSigns() == '-')
+                                _pending.Add(new Pending { Kind = PendingKind.Unary, UnaryCode = OpCode.Negate });
                         }
-                        else if (c == '-' || c == '~' || (c == '!' && (i + 1 >= _text.Length || _text[i + 1] != '=')))
+                        else if (c == '~' || (c == '!' && !IsAt("!=")))
                         {
-                            _pending.Add(new Pending
-                            {
-                                Kind = PendingKind.Unary,
-                                UnaryCode = c == '-' ? OpCode.Negate : c == '!' ? OpCode.LogicalNot : OpCode.BitwiseNot
-                            });
-                            i++;
+                            ConsumeOperatorChar();
+                            _pending.Add(new Pending { Kind = PendingKind.Unary, UnaryCode = c == '!' ? OpCode.LogicalNot : OpCode.BitwiseNot });
                         }
                         else if (c == '(')
                         {
                             _pending.Add(new Pending { Kind = PendingKind.Parenthesis });
-                            i++;
+                            _position++;
+                            isAfterOpenParenthesis = true;
                         }
-                        else if (char.IsAsciiDigit(c) || c == '.')
+                        else if (char.IsAsciiDigit(c))
                         {
-                            int start = i;
-                            while (i < _text.Length && (char.IsAsciiDigit(_text[i]) || _text[i] == '.'))
-                                i++;
-                            var value = Utility.ParseNumber(_text.AsSpan(start, i - start), options.UseFastFloatingPointParser);
-                            _output.Add(new Instruction(OpCode.Constant, constant: value));
+                            _output.Add(new Instruction(OpCode.Constant, constant: ReadNumber()));
                             expectOperand = false;
                         }
-                        else if (c == '$')
+                        else if (char.IsAsciiLetter(c) || c == '_')
                         {
-                            //Placeholders in sanitized text are only ever NULL literals.
-                            i = _text.IndexOf('$', i + 1) + 1;
-                            _output.Add(new Instruction(OpCode.Constant, constant: options.DefaultNullValue));
-                            expectOperand = false;
+                            expectOperand = ReadIdentifier();
                         }
-                        else if (Utility.IsValidVariableChar(c))
+                        else if (c == ')' && wasAfterOpenParenthesis && _pending[^1].Kind == PendingKind.Parenthesis)
                         {
-                            int start = i;
-                            while (i < _text.Length && Utility.IsValidVariableChar(_text[i]))
-                                i++;
-                            var name = _text.AsSpan(start, i - start);
-
-                            if (i < _text.Length && _text[i] == '{')
-                            {
-                                var functionName = name.ToString();
-                                i++;
-                                if (_text[i] == '}')
-                                {
-                                    i++;
-                                    EmitCall(functionName, 0);
-                                    expectOperand = false;
-                                }
-                                else
-                                {
-                                    _pending.Add(new Pending { Kind = PendingKind.Call, FunctionName = functionName });
-                                }
-                            }
-                            else
-                            {
-                                _output.Add(new Instruction(OpCode.Variable, operand: IndexOfVariable(name)));
-                                expectOperand = false;
-                            }
+                            throw SyntaxError("empty parentheses", _position);
+                        }
+                        else if (c == ',' && IsInFunctionCall())
+                        {
+                            throw SyntaxError("missing function parameter", _position);
+                        }
+                        else if (c == ')' && IsInFunctionCall() && _pending[^1].Kind == PendingKind.Call && _pending[^1].ParameterCount > 0)
+                        {
+                            throw SyntaxError("missing function parameter", _position);
+                        }
+                        else if (Utility.IsMathChar(c) || c == ')' || c == ',')
+                        {
+                            throw SyntaxError($"missing operand before '{c}'", _position);
                         }
                         else
                         {
-                            throw new Exception($"Syntax error: unexpected '{c}' at position {i} of '{_text}'.");
+                            throw SyntaxError($"unexpected character '{c}'", _position);
                         }
                     }
                     else
                     {
                         if (c == ')')
                         {
-                            PopUntil(PendingKind.Parenthesis);
-                            _pending.RemoveAt(_pending.Count - 1);
-                            i++;
+                            CloseGrouping();
+                            _position++;
                         }
-                        else if (c == '}' || c == ',')
+                        else if (c == ',')
                         {
-                            PopUntil(PendingKind.Call);
+                            PopOperators();
+                            if (_pending.Count == 0 || _pending[^1].Kind != PendingKind.Call)
+                                throw SyntaxError("unexpected ','", _position);
+
                             var call = _pending[^1];
                             call.ParameterCount++;
-                            i++;
-
-                            if (c == ',')
-                            {
-                                _pending[^1] = call;
-                                expectOperand = true;
-                            }
-                            else
-                            {
-                                _pending.RemoveAt(_pending.Count - 1);
-                                EmitCall(call.FunctionName, call.ParameterCount);
-                            }
+                            _pending[^1] = call;
+                            _position++;
+                            expectOperand = true;
                         }
-                        else
+                        else if (Utility.IsMathChar(c) && c != '!' && c != '~' || IsAt("!="))
                         {
-                            var operation = MatchBinaryOperator(i, out int level);
+                            var operation = ReadBinaryOperator(out int level);
 
                             //Unary operators bind tightest; binary operators are left associative.
                             while (_pending.Count > 0 && (_pending[^1].Kind == PendingKind.Unary
@@ -396,68 +450,234 @@ namespace NTDLS.ExpressionParser
                                 EmitPending();
                             }
 
-                            _pending.Add(new Pending
-                            {
-                                Kind = PendingKind.Binary,
-                                BinaryOperator = Utility.ToBinaryOperator(operation),
-                                Level = level
-                            });
-                            i += operation.Length;
+                            _pending.Add(new Pending { Kind = PendingKind.Binary, BinaryOperator = operation, Level = level });
                             expectOperand = true;
+                        }
+                        else if (char.IsAsciiLetterOrDigit(c) || c == '_' || c == '(' || c == '.' || c == '!' || c == '~')
+                        {
+                            throw SyntaxError($"missing operator before '{c}'", _position);
+                        }
+                        else
+                        {
+                            throw SyntaxError($"unexpected character '{c}'", _position);
                         }
                     }
                 }
 
+                if (expectOperand)
+                    throw SyntaxError("missing operand at end of expression", _position);
+
                 while (_pending.Count > 0)
                 {
                     if (_pending[^1].Kind is PendingKind.Parenthesis or PendingKind.Call)
-                        throw new Exception($"Syntax error: unbalanced grouping in '{_text}'.");
+                        throw SyntaxError("unclosed '('", _position);
                     EmitPending();
                 }
 
                 var program = _output.ToArray();
-                return new CompiledExpression(program, sanitized, options, MaxStackDepth(program), _maxParameterCount);
+                return new CompiledExpression(program, _variables.ToArray(), _text, options, MaxStackDepth(program), _maxParameterCount);
             }
 
-            private int IndexOfVariable(ReadOnlySpan<char> name)
+            #region Lexing.
+
+            private void SkipWhitespace()
             {
-                for (int v = 0; v < _variables.Length; v++)
+                while (_position < _text.Length && char.IsWhiteSpace(_text[_position]))
+                    _position++;
+            }
+
+            private bool IsAt(string value) => _text.AsSpan(_position).StartsWith(value);
+
+            private void ConsumeOperatorChar()
+            {
+                if (++_consecutiveOperatorChars > MaxConsecutiveOperatorChars)
+                    throw new Exception($"Invalid consecutive operators near position {_position}: '{_text[_position]}'");
+                _position++;
+            }
+
+            /// <summary>
+            /// Consumes a run of '+' and '-' (whitespace between them is allowed), returning the resulting sign.
+            /// </summary>
+            private char ConsumeSigns()
+            {
+                bool isNegative = false;
+                while (true)
                 {
-                    if (name.SequenceEqual(_variables[v]))
+                    char c = _text[_position];
+                    isNegative ^= c == '-';
+                    ConsumeOperatorChar();
+
+                    int afterSign = _position;
+                    SkipWhitespace();
+                    if (_position >= _text.Length || (_text[_position] != '-' && _text[_position] != '+'))
+                    {
+                        _position = afterSign;
+                        return isNegative ? '-' : '+';
+                    }
+                }
+            }
+
+            private double ReadNumber()
+            {
+                int start = _position;
+                int decimalPoints = 0;
+                while (_position < _text.Length && (char.IsAsciiDigit(_text[_position]) || _text[_position] == '.'))
+                {
+                    if (_text[_position] == '.')
+                        decimalPoints++;
+                    _position++;
+                }
+
+                var number = _text.AsSpan(start, _position - start);
+                if (decimalPoints > 1 || number[^1] == '.')
+                    throw new Exception($"Value is not a number: {number.ToString()}");
+
+                return Utility.ParseNumber(number, options.UseFastFloatingPointParser);
+            }
+
+            /// <summary>
+            /// Reads a variable, the null keyword or the start of a function call. Returns whether an operand is
+            /// still expected (true after the opening parenthesis of a function with parameters).
+            /// </summary>
+            private bool ReadIdentifier()
+            {
+                int start = _position;
+                while (_position < _text.Length && (char.IsAsciiLetterOrDigit(_text[_position]) || _text[_position] == '_'))
+                    _position++;
+                var name = _text.AsSpan(start, _position - start);
+
+                if (name.Equals("null", StringComparison.OrdinalIgnoreCase))
+                {
+                    _output.Add(new Instruction(OpCode.Constant, constant: options.DefaultNullValue));
+                    return false;
+                }
+
+                //A function call, which may have whitespace before its parenthesis.
+                int afterName = _position;
+                SkipWhitespace();
+                if (_position < _text.Length && _text[_position] == '(')
+                {
+                    var functionName = FunctionName(name);
+                    _position++;
+
+                    SkipWhitespace();
+                    if (_position < _text.Length && _text[_position] == ')')
+                    {
+                        _position++;
+                        EmitCall(functionName, 0);
+                        return false;
+                    }
+
+                    _pending.Add(new Pending { Kind = PendingKind.Call, FunctionName = functionName });
+                    return true;
+                }
+                _position = afterName;
+
+                _output.Add(new Instruction(OpCode.Variable, operand: VariableIndex(name)));
+                return false;
+            }
+
+            /// <summary>
+            /// Returns the lower case function name, using the shared string for native functions.
+            /// </summary>
+            private static string FunctionName(ReadOnlySpan<char> name)
+            {
+                foreach (var native in Utility.NativeFunctions)
+                {
+                    if (name.Equals(native, StringComparison.OrdinalIgnoreCase))
+                        return native;
+                }
+                return name.ToString().ToLowerInvariant();
+            }
+
+            private int VariableIndex(ReadOnlySpan<char> name)
+            {
+                for (int v = 0; v < _variables.Count; v++)
+                {
+                    if (name.Equals(_variables[v], StringComparison.OrdinalIgnoreCase))
                         return v;
                 }
-                throw new Exception($"Undefined variable: {name.ToString()}");
+                _variables.Add(name.ToString().ToLowerInvariant());
+                return _variables.Count - 1;
             }
 
-            private string MatchBinaryOperator(int i, out int level)
+            private BinaryOperator ReadBinaryOperator(out int level)
             {
-                var remaining = _text.AsSpan(i);
+                char c = _text[_position];
+
+                if (c == '+' || c == '-')
+                {
+                    //A run of signs after an operand is one binary operator: "a - -b" is "a + b".
+                    level = 1;
+                    return ConsumeSigns() == '-' ? BinaryOperator.Subtract : BinaryOperator.Add;
+                }
+
                 foreach (var operation in Utility.ThirdOrderOperations)
                 {
-                    if (remaining.StartsWith(operation))
+                    if (IsAt(operation))
                     {
+                        for (int i = 0; i < operation.Length; i++)
+                            ConsumeOperatorChar();
                         level = 2 + Utility.ThirdOrderPrecedence(operation);
-                        return operation;
+                        return Utility.ToBinaryOperator(operation);
                     }
                 }
 
-                char c = _text[i];
-                level = c is '*' or '/' or '%' ? 0 : c is '+' or '-' ? 1
-                    : throw new Exception($"Syntax error: unexpected '{c}' at position {i} of '{_text}'.");
-                return Utility.OperatorString(c);
+                ConsumeOperatorChar();
+                level = 0;
+                return c switch
+                {
+                    '*' => BinaryOperator.Multiply,
+                    '/' => BinaryOperator.Divide,
+                    '%' => BinaryOperator.Modulus,
+                    _ => throw SyntaxError($"unexpected '{c}'", _position - 1)
+                };
             }
 
-            private void PopUntil(PendingKind kind)
+            #endregion
+
+            #region Grouping.
+
+            private bool IsInFunctionCall()
             {
-                while (_pending.Count > 0 && _pending[^1].Kind != kind)
+                for (int i = _pending.Count - 1; i >= 0; i--)
                 {
-                    if (_pending[^1].Kind is PendingKind.Parenthesis or PendingKind.Call)
-                        throw new Exception($"Syntax error: unbalanced grouping in '{_text}'.");
-                    EmitPending();
+                    if (_pending[i].Kind == PendingKind.Call)
+                        return true;
+                    if (_pending[i].Kind == PendingKind.Parenthesis)
+                        return false;
                 }
-                if (_pending.Count == 0)
-                    throw new Exception($"Syntax error: unbalanced grouping in '{_text}'.");
+                return false;
             }
+
+            /// <summary>
+            /// Emits operators until the innermost grouping (parenthesis or function call) is on top.
+            /// </summary>
+            private void PopOperators()
+            {
+                while (_pending.Count > 0 && _pending[^1].Kind is PendingKind.Unary or PendingKind.Binary)
+                    EmitPending();
+            }
+
+            /// <summary>
+            /// Handles ')', which closes either a parenthesized group or a function call.
+            /// </summary>
+            private void CloseGrouping()
+            {
+                PopOperators();
+                if (_pending.Count == 0)
+                    throw SyntaxError("unbalanced ')'", _position);
+
+                var grouping = _pending[^1];
+                _pending.RemoveAt(_pending.Count - 1);
+
+                if (grouping.Kind == PendingKind.Call)
+                    EmitCall(grouping.FunctionName, grouping.ParameterCount + 1);
+            }
+
+            #endregion
+
+            #region Emitting.
 
             private void EmitPending()
             {
@@ -567,6 +787,8 @@ namespace NTDLS.ExpressionParser
                 }
                 return max;
             }
+
+            #endregion
         }
 
         #endregion

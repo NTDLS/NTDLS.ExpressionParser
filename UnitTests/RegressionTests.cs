@@ -1,4 +1,4 @@
-using NTDLS.ExpressionParser;
+﻿using NTDLS.ExpressionParser;
 
 namespace UnitTests
 {
@@ -183,7 +183,7 @@ namespace UnitTests
                 expr.SetParameter("ab", 3);
                 expr.Evaluate();
             });
-            Assert.Contains("Missing operator", ex.Message);
+            Assert.Contains("missing operator", ex.Message);
         }
 
         [Fact]
