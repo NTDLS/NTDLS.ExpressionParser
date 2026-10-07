@@ -330,6 +330,54 @@ namespace UnitTests
             => Assert.Equal(expected, new Expression(text).OperationCount);
 
         [Fact]
+        public void Parameter_Lifecycle()
+        {
+            var expr = new Expression("a + B");
+            Assert.Throws<Exception>(() => expr.Evaluate()); //Nothing set.
+
+            expr.SetParameter("A", 1); //Names are case insensitive.
+            expr.SetParameter("b", 2);
+            expr.SetParameter("unused", 100); //Harmless.
+            Assert.Equal(3, expr.Evaluate());
+
+            expr.SetParameter("a", 10); //Overwrite.
+            Assert.Equal(12, expr.Evaluate());
+
+            expr.RemoveParameter("b");
+            var ex = Assert.Throws<Exception>(() => expr.Evaluate());
+            Assert.Equal("Undefined variable: b", ex.Message);
+
+            expr.RemoveParameter("b"); //Removing twice is harmless.
+            expr.SetParameter("b", 5);
+            Assert.Equal(15, expr.Evaluate());
+
+            expr.ClearParameters();
+            Assert.Throws<Exception>(() => expr.Evaluate());
+            Assert.Throws<Exception>(() => expr.Evaluate(out _));
+        }
+
+        [Fact]
+        public void Null_Parameter_Uses_DefaultNullValue()
+        {
+            var expr = new Expression("a + 1", new ExpressionOptions { DefaultNullValue = 4 });
+            expr.SetParameter("a", (double?)null);
+            Assert.Equal(5, expr.Evaluate());
+
+            var noDefault = new Expression("a + 1");
+            noDefault.SetParameter("a", (double?)null);
+            Assert.Null(noDefault.Evaluate());
+        }
+
+        [Fact]
+        public void Bool_And_Int_Parameters()
+        {
+            var expr = new Expression("a + b");
+            expr.SetParameter("a", true);
+            expr.SetParameter("b", 41);
+            Assert.Equal(42, expr.Evaluate());
+        }
+
+        [Fact]
         public void Repeated_Static_Evaluation_Is_Stable()
         {
             for (int i = 0; i < 5; i++)

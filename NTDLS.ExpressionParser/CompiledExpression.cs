@@ -37,6 +37,7 @@ namespace NTDLS.ExpressionParser
 
         private readonly Instruction[] _program;
         private readonly string[] _variables;
+        private readonly Dictionary<string, int> _variableIndexes;
         private readonly int _maxStackDepth;
         private readonly int _maxParameterCount;
         private readonly Sanitized _sanitized;
@@ -75,6 +76,9 @@ namespace NTDLS.ExpressionParser
             _sanitized = sanitized;
             _options = options;
             _variables = sanitized.Variables;
+            _variableIndexes = new(_variables.Length);
+            for (int i = 0; i < _variables.Length; i++)
+                _variableIndexes[_variables[i]] = i;
             _maxStackDepth = maxStackDepth;
             _maxParameterCount = maxParameterCount;
         }
@@ -82,42 +86,46 @@ namespace NTDLS.ExpressionParser
         public static CompiledExpression Compile(Sanitized sanitized, ExpressionOptions options)
             => new Compiler(sanitized, options, fold: true).Compile();
 
+        /// <summary>
+        /// The number of distinct variables. Variable values are passed to Evaluate() by index.
+        /// </summary>
+        public int VariableCount => _variables.Length;
+
+        /// <summary>
+        /// Returns the index of the (lower case) variable, or -1 when the expression does not use it.
+        /// </summary>
+        public int IndexOfVariable(string name) => _variableIndexes.TryGetValue(name, out int index) ? index : -1;
+
+        public string VariableName(int index) => _variables[index];
+
         #region Evaluation.
 
-        public double? Evaluate(Dictionary<string, double?>? parameters,
-            Dictionary<string, ExpressionFunction>? functions)
-            => Run(parameters, functions, null);
+        /// <param name="variables">The value of each variable, by index. Every variable must have been given a value.</param>
+        /// <param name="functions">Custom functions, by lower case name.</param>
+        public double? Evaluate(ReadOnlySpan<double?> variables, Dictionary<string, ExpressionFunction>? functions)
+            => Run(variables, functions, null);
 
         /// <summary>
         /// Evaluates the expression, describing each operation as it is performed.
         /// </summary>
-        public double? Evaluate(Dictionary<string, double?>? parameters,
+        public double? Evaluate(ReadOnlySpan<double?> variables,
             Dictionary<string, ExpressionFunction>? functions, out string showWork)
         {
             var unfolded = Unfolded;
 
             var work = new Work(new StringBuilder(), $"G{_options.Precision}");
             work.Builder.AppendLine("{");
-            var result = unfolded.Run(parameters, functions, work);
+            var result = unfolded.Run(variables, functions, work);
             work.Builder.Append("} = ").AppendLine(work.Format(result));
 
             showWork = work.Builder.ToString();
             return result;
         }
 
-        private double? Run(Dictionary<string, double?>? parameters,
+        private double? Run(ReadOnlySpan<double?> variables,
             Dictionary<string, ExpressionFunction>? functions, Work? work)
         {
             double? defaultNullValue = _options.DefaultNullValue;
-
-            //Every discovered variable must be defined, even if constant folding made it irrelevant.
-            Span<double?> variables = _variables.Length <= 32 ? stackalloc double?[_variables.Length] : new double?[_variables.Length];
-            for (int i = 0; i < _variables.Length; i++)
-            {
-                if (parameters == null || !parameters.TryGetValue(_variables[i], out var value))
-                    throw new Exception($"Undefined variable: {_variables[i]}");
-                variables[i] = value ?? defaultNullValue;
-            }
 
             if (_program.Length == 1 && _program[0].Code == OpCode.Constant)
                 return _program[0].Constant; //Fully folded.

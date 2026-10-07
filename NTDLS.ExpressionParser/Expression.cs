@@ -12,10 +12,18 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         private static readonly ExpressionOptions _defaultOptions = new();
 
-        private Dictionary<string, double?>? _definedParameters;
         private Dictionary<string, ExpressionFunction>? _expressionFunctions;
 
         private readonly CompiledExpression _compiled;
+
+        /// <summary>
+        /// The value of each variable, by the index the compiled expression assigned to it. Resolving the name in
+        /// SetParameter() means that Evaluate() never has to look a variable up. Nulls are already replaced by
+        /// the DefaultNullValue option.
+        /// </summary>
+        private readonly double?[] _variableValues;
+        private readonly bool[] _isVariableDefined;
+        private int _definedVariableCount;
 
         internal ExpressionOptions Options { get; set; }
         internal Dictionary<string, ExpressionFunction> ExpressionFunctions => _expressionFunctions ??= new();
@@ -52,6 +60,9 @@ namespace NTDLS.ExpressionParser
             {
                 _compiled = Compile(text, Options);
             }
+
+            _variableValues = _compiled.VariableCount == 0 ? [] : new double?[_compiled.VariableCount];
+            _isVariableDefined = _compiled.VariableCount == 0 ? [] : new bool[_compiled.VariableCount];
         }
 
         private static CompiledExpression Compile(string text, ExpressionOptions options)
@@ -80,7 +91,10 @@ namespace NTDLS.ExpressionParser
         /// Evaluates the expression, processing all variables and functions.
         /// </summary>
         public double? Evaluate()
-            => _compiled.Evaluate(_definedParameters, _expressionFunctions);
+        {
+            EnsureVariablesAreDefined();
+            return _compiled.Evaluate(_variableValues, _expressionFunctions);
+        }
 
         /// <summary>
         /// Evaluates the expression, processing all variables and functions.
@@ -88,7 +102,25 @@ namespace NTDLS.ExpressionParser
         /// <param name="showWork">Output parameter for the operational explanation: each operation, in the order performed.</param>
         /// <returns></returns>
         public double? Evaluate(out string showWork)
-            => _compiled.Evaluate(_definedParameters, _expressionFunctions, out showWork);
+        {
+            EnsureVariablesAreDefined();
+            return _compiled.Evaluate(_variableValues, _expressionFunctions, out showWork);
+        }
+
+        /// <summary>
+        /// Every variable in the expression must have a value, even if constant folding made it irrelevant.
+        /// </summary>
+        private void EnsureVariablesAreDefined()
+        {
+            if (_definedVariableCount == _variableValues.Length)
+                return;
+
+            for (int i = 0; i < _isVariableDefined.Length; i++)
+            {
+                if (!_isVariableDefined[i])
+                    throw new Exception($"Undefined variable: {_compiled.VariableName(i)}");
+            }
+        }
 
         /// <summary>
         /// Evaluates a mathematical expression.
@@ -155,32 +187,58 @@ namespace NTDLS.ExpressionParser
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, double? value) => (_definedParameters ??= new())[name.ToLowerInvariant()] = value;
+        public void SetParameter(string name, double? value)
+        {
+            int index = _compiled.IndexOfVariable(name.ToLowerInvariant());
+            if (index < 0)
+                return; //The expression does not use this variable.
+
+            _variableValues[index] = value ?? Options.DefaultNullValue;
+            if (!_isVariableDefined[index])
+            {
+                _isVariableDefined[index] = true;
+                _definedVariableCount++;
+            }
+        }
 
         /// <summary>
         /// Sets a parameter in the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, int? value) => (_definedParameters ??= new())[name.ToLowerInvariant()] = value;
+        public void SetParameter(string name, int? value) => SetParameter(name, (double?)value);
 
         /// <summary>
         /// Sets a parameter in the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
         /// <param name="value">Value of the variable.</param>
-        public void SetParameter(string name, bool? value) => (_definedParameters ??= new())[name.ToLowerInvariant()] = value == null ? null : value == true ? 1 : 0;
+        public void SetParameter(string name, bool? value) => SetParameter(name, value == null ? null : value == true ? 1 : 0);
 
         /// <summary>
         /// Removed a parameter from the mathematical expression.
         /// </summary>
         /// <param name="name">Name of the variable as found in the string mathematical expression.</param>
-        public void RemoveParameter(string name) => _definedParameters?.Remove(name.ToLowerInvariant());
+        public void RemoveParameter(string name)
+        {
+            int index = _compiled.IndexOfVariable(name.ToLowerInvariant());
+            if (index >= 0 && _isVariableDefined[index])
+            {
+                _isVariableDefined[index] = false;
+                _variableValues[index] = null;
+                _definedVariableCount--;
+            }
+        }
 
         /// <summary>
         /// Removes all parameters which have been previously added to the expression.
         /// </summary>
-        public void ClearParameters() => _definedParameters?.Clear();
+        public void ClearParameters()
+        {
+            Array.Clear(_variableValues);
+            Array.Clear(_isVariableDefined);
+            _definedVariableCount = 0;
+        }
 
         #endregion
 
