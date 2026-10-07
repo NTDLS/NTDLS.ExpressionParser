@@ -29,6 +29,11 @@ namespace TestHarness
 
         static void Main()
         {
+            var result = Expression.Evaluate("10 * ((1000 / 5 + (10 * 11)))", out var explanation);
+
+            Console.WriteLine($"{result:n2}");
+            Console.WriteLine(explanation);
+
             {
                 var expression = new Expression("10 + CustomSum(11)");
 

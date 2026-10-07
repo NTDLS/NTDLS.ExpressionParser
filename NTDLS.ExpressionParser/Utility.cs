@@ -50,78 +50,73 @@ namespace NTDLS.ExpressionParser
             "trunc"
         ];
 
-        internal static readonly char[] PreOrderOperations =
-        [
-            '!',  //Logical NOT
-        ];
-
-        internal static readonly char[] FirstOrderOperations =
-        [
-            '~',  //Bitwise NOT
-	        '*',  //Multiplication
-	        '/',  //Division
-	        '%'  //Modulation
-        ];
-
-        internal static readonly char[] SecondOrderOperations =
-        [
-            '+',  //Addition
-	        '-'  //Subtraction
-        ];
-
-        internal static readonly string[] ThirdOrderOperations =
-        [
-            "<>", //Logical Not Equal
-	        "|=", //Bitwise Or Equal
-	        "&=", //Bitwise And Equal
-	        "^=", //Bitwise XOR Equal
-	        "<=", //Logical Less or Equal
-	        ">=", //Logical Greater or Equal
-	        "!=", //Logical Not Equal
-
-	        "<<", //Bitwise Left Shift
-	        ">>", //Bitwise Right Shift
-
-	        "=",  //Logical Equals
-	        ">",  //Logical Greater Than
-	        "<",  //Logical Less Than
-
-	        "&&", //Logical AND
-	        "||", //Logical OR
-
-	        "|",  //Bitwise OR
-	        "&",  //Bitwise AND
-	        "^",  //Exclusive OR
-        ];
-
-        internal static readonly char[] MathChars = ['*', '/', '+', '-', '>', '<', '!', '=', '&', '|', '^', '%', '~'];
-        internal static readonly string[] IntegerExclusiveOperations = ["&", "|", "^", "&=", "|=", "^=", "<<", ">>"];
+        internal static readonly HashSet<string> NativeFunctionSet = new(NativeFunctions);
 
         /// <summary>
-        /// Returns true when the entire span is a single placeholder of the form $digits$.
-        /// Rejects composite expressions like "$0$||$1$" that merely start with '$'.
+        /// Third order operations, ordered so that two-character operators are matched before their one-character prefixes.
+        /// </summary>
+        internal static readonly string[] ThirdOrderOperations =
+        [
+            "<<", //Bitwise Left Shift
+            ">>", //Bitwise Right Shift
+            "<=", //Logical Less or Equal
+            ">=", //Logical Greater or Equal
+            "<>", //Logical Not Equal
+            "==", //Logical Equals
+            "!=", //Logical Not Equal
+            "&&", //Logical AND
+            "||", //Logical OR
+            "&=", //Bitwise And Equal
+            "|=", //Bitwise Or Equal
+            "^=", //Bitwise XOR Equal
+            "<",  //Logical Less Than
+            ">",  //Logical Greater Than
+            "=",  //Logical Equals
+            "&",  //Bitwise AND
+            "|",  //Bitwise OR
+            "^",  //Exclusive OR
+        ];
+
+        /// <summary>
+        /// Precedence of the third order operations (mirrors C operator precedence). Lower binds tighter.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsSinglePlaceholder(ReadOnlySpan<char> text)
+        internal static int ThirdOrderPrecedence(string operation) => operation switch
         {
-            if (text.Length < 3 || text[0] != '$' || text[^1] != '$')
-                return false;
-            for (int i = 1; i < text.Length - 1; i++)
-                if (!char.IsAsciiDigit(text[i])) return false;
-            return true;
-        }
+            "<<" or ">>" => 0,
+            "<" or "<=" or ">" or ">=" => 1,
+            "=" or "==" or "!=" or "<>" => 2,
+            "&" or "&=" => 3,
+            "^" or "^=" => 4,
+            "|" or "|=" => 5,
+            "&&" => 6,
+            "||" => 7,
+            _ => throw new Exception($"Invalid operator: {operation}")
+        };
+
+        /// <summary>
+        /// Returns a cached string for a single character operator so that operator discovery does not allocate.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static string OperatorString(char value) => value switch
+        {
+            '*' => "*",
+            '/' => "/",
+            '%' => "%",
+            '+' => "+",
+            '-' => "-",
+            _ => value.ToString()
+        };
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsNativeFunction(string value) => NativeFunctions.Contains(value);
+        internal static bool IsNativeFunction(string value) => NativeFunctionSet.Contains(value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsIntegerExclusiveOperation(string value) => (IntegerExclusiveOperations).Contains(value);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsMathChar(char value) => (MathChars).Contains(value);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsValidChar(char value) => char.IsDigit(value) || IsMathChar(value) || value == '.' || value == '(' || value == ')';
+        internal static bool IsMathChar(char value) => value switch
+        {
+            '*' or '/' or '+' or '-' or '>' or '<' or '!' or '=' or '&' or '|' or '^' or '%' or '~' => true,
+            _ => false
+        };
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsValidVariableChar(char value) => char.IsDigit(value) || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_';
@@ -173,128 +168,228 @@ namespace NTDLS.ExpressionParser
             return true;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static int FastHash(string text, int optionsHash)
-        {
-            unchecked
-            {
-                int hash = 17;
-                for (int i = 0; i < text.Length; i++)
-                    hash = hash * 31 + text[i];
+        private static readonly double[] _powersOfTen =
+            [1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22];
 
-                hash = hash * 31 + optionsHash;
-                return hash;
+        /// <summary>
+        /// Parses a numeric literal (optionally signed). Placeholders are not handled here.
+        /// </summary>
+        internal static double ParseNumber(ReadOnlySpan<char> span, bool useFastFloatingPointParser)
+        {
+            if (useFastFloatingPointParser)
+            {
+                int i = 0;
+                bool isNegative = false;
+
+                if (span.Length > 0 && (span[0] == '-' || span[0] == '+'))
+                {
+                    isNegative = span[0] == '-';
+                    i++; //Skip the explicit sign.
+                }
+
+                ulong mantissa = 0;
+                int significantDigits = 0;
+                int fractionDigits = 0;
+                bool seenDecimal = false;
+
+                for (; i < span.Length; i++)
+                {
+                    int digit = span[i] - '0';
+                    if ((uint)digit <= 9)
+                    {
+                        if (significantDigits > 0 || digit != 0)
+                            significantDigits++;
+                        mantissa = mantissa * 10 + (uint)digit;
+                        if (seenDecimal)
+                            fractionDigits++;
+                    }
+                    else if (span[i] == '.' && !seenDecimal)
+                    {
+                        seenDecimal = true;
+                    }
+                    else throw new FormatException("Invalid character in input string.");
+                }
+
+                //When both the mantissa and the power of ten are exactly representable, a single
+                //  division yields the correctly rounded result. Otherwise fall back to the full parser.
+                if (significantDigits <= 15 && fractionDigits < _powersOfTen.Length)
+                {
+                    double result = fractionDigits == 0 ? mantissa : mantissa / _powersOfTen[fractionDigits];
+                    return isNegative ? -result : result;
+                }
             }
+
+            return double.Parse(span, System.Globalization.CultureInfo.InvariantCulture);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static int ComputeIntegerExclusivePrimitive(int leftValue, string operation, int rightValue)
+        internal static BinaryOperator ToBinaryOperator(string operation) => operation switch
         {
-            return operation switch
-            {
-                "!" => (leftValue != rightValue) ? 1 : 0,
-                "&" => leftValue & rightValue,
-                "&&" => (leftValue != 0 && rightValue != 0) ? 1 : 0,
-                "&=" => leftValue &= rightValue,
-                "^" => leftValue ^ rightValue,
-                "^=" => leftValue ^= rightValue,
-                "|" => leftValue | rightValue,
-                "||" => (leftValue != 0 || rightValue != 0) ? 1 : 0,
-                "|=" => leftValue |= rightValue,
-                "~" => ~leftValue,
-                "<<" => leftValue << rightValue,
-                "=" => (leftValue == rightValue) ? 1 : 0,
-                ">>" => leftValue >> rightValue,
-                _ => throw new Exception($"Invalid operator: {operation}"),
-            };
-        }
+            "*" => BinaryOperator.Multiply,
+            "/" => BinaryOperator.Divide,
+            "%" => BinaryOperator.Modulus,
+            "+" => BinaryOperator.Add,
+            "-" => BinaryOperator.Subtract,
+            "<<" => BinaryOperator.ShiftLeft,
+            ">>" => BinaryOperator.ShiftRight,
+            "<" => BinaryOperator.Less,
+            "<=" => BinaryOperator.LessOrEqual,
+            ">" => BinaryOperator.Greater,
+            ">=" => BinaryOperator.GreaterOrEqual,
+            "=" => BinaryOperator.Equal,
+            "==" => BinaryOperator.DoubleEqual,
+            "!=" => BinaryOperator.NotEqual,
+            "<>" => BinaryOperator.LessGreater,
+            "&" => BinaryOperator.BitwiseAnd,
+            "&=" => BinaryOperator.BitwiseAndEqual,
+            "^" => BinaryOperator.BitwiseXor,
+            "^=" => BinaryOperator.BitwiseXorEqual,
+            "|" => BinaryOperator.BitwiseOr,
+            "|=" => BinaryOperator.BitwiseOrEqual,
+            "&&" => BinaryOperator.LogicalAnd,
+            "||" => BinaryOperator.LogicalOr,
+            _ => throw new Exception($"Invalid operator: {operation}"),
+        };
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static double ComputePrivative(double leftValue, string operation, double rightValue)
+        private static readonly string[] _binaryOperatorText =
+            ["*", "/", "%", "+", "-", "<<", ">>", "<", "<=", ">", ">=", "=", "==", "!=", "<>", "&", "&=", "^", "^=", "|", "|=", "&&", "||"];
+
+        internal static string ToText(BinaryOperator operation) => _binaryOperatorText[(int)operation];
+
+        internal static double ComputeBinary(double leftValue, BinaryOperator operation, double rightValue)
         {
-            if (IsIntegerExclusiveOperation(operation))
+            double result;
+
+            switch (operation)
             {
-                return ComputeIntegerExclusivePrimitive((int)leftValue, operation, (int)rightValue);
+                //Integer exclusive operations.
+                case BinaryOperator.BitwiseAnd:
+                case BinaryOperator.BitwiseAndEqual: return (int)leftValue & (int)rightValue;
+                case BinaryOperator.BitwiseXor:
+                case BinaryOperator.BitwiseXorEqual: return (int)leftValue ^ (int)rightValue;
+                case BinaryOperator.BitwiseOr:
+                case BinaryOperator.BitwiseOrEqual: return (int)leftValue | (int)rightValue;
+                case BinaryOperator.ShiftLeft: return (int)leftValue << (int)rightValue;
+                case BinaryOperator.ShiftRight: return (int)leftValue >> (int)rightValue;
+
+                case BinaryOperator.Multiply: result = leftValue * rightValue; break;
+                case BinaryOperator.Divide: result = rightValue != 0 ? (leftValue / rightValue) : throw new Exception("Divide by zero."); break;
+                case BinaryOperator.Modulus: result = rightValue != 0 ? (leftValue % rightValue) : throw new Exception("Divide by zero (mod)."); break;
+                case BinaryOperator.Add: result = leftValue + rightValue; break;
+                case BinaryOperator.Subtract: result = leftValue - rightValue; break;
+                case BinaryOperator.Less: return (leftValue < rightValue) ? 1 : 0;
+                case BinaryOperator.LessOrEqual: return (leftValue <= rightValue) ? 1 : 0;
+                case BinaryOperator.Greater: return (leftValue > rightValue) ? 1 : 0;
+                case BinaryOperator.GreaterOrEqual: return (leftValue >= rightValue) ? 1 : 0;
+                case BinaryOperator.Equal:
+                case BinaryOperator.DoubleEqual: return (leftValue == rightValue) ? 1 : 0;
+                case BinaryOperator.NotEqual:
+                case BinaryOperator.LessGreater: return (leftValue != rightValue) ? 1 : 0;
+                case BinaryOperator.LogicalAnd: return (leftValue != 0 && rightValue != 0) ? 1 : 0;
+                case BinaryOperator.LogicalOr: return (leftValue != 0 || rightValue != 0) ? 1 : 0;
+                default: throw new Exception($"Invalid operator: {operation}");
             }
-
-            var result = operation switch
-            {
-                "!" => (leftValue != rightValue) ? 1 : 0,
-                "!=" => (leftValue != rightValue) ? 1 : 0,
-                "-" => (leftValue - rightValue),
-                "%" => rightValue != 0 ? (leftValue % rightValue) : throw new Exception("Divide by zero (mod)."),
-                "&&" => (leftValue != 0 && rightValue != 0) ? 1 : 0,
-                "*" => (leftValue * rightValue),
-                "/" => rightValue != 0 ? (leftValue / rightValue) : throw new Exception("Divide by zero."),
-                "||" => (leftValue != 0 || rightValue != 0) ? 1 : 0,
-                "+" => (leftValue + rightValue),
-                "<" => (leftValue < rightValue) ? 1 : 0,
-                "<=" => (leftValue <= rightValue) ? 1 : 0,
-                "<>" => (leftValue != rightValue) ? 1 : 0,
-                "=" => (leftValue == rightValue) ? 1 : 0,
-                ">" => (leftValue > rightValue) ? 1 : 0,
-                ">=" => (leftValue >= rightValue) ? 1 : 0,
-                _ => throw new Exception($"Invalid operator: {operation}"),
-            };
 
             if (double.IsNaN(result))
             {
-                throw new Exception($"Result of {operation} is NaN.");
+                throw new Exception($"Result of {_binaryOperatorText[(int)operation]} is NaN.");
             }
 
             if (double.IsInfinity(result))
             {
-                throw new Exception($"Result of {operation} is infinite.");
+                throw new Exception($"Result of {_binaryOperatorText[(int)operation]} is infinite.");
             }
 
             return result;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static double ComputeNativeFunction(string functionName, double[] parameters)
+        /// <summary>
+        /// Returns false for native functions whose result can differ between calls with the same parameters.
+        /// </summary>
+        internal static bool IsDeterministicNativeFunction(string functionName) => functionName != "rand";
+
+        internal static double ComputeNativeFunction(string functionName, ReadOnlySpan<double> parameters)
         {
             return functionName switch
             {
-                "abs" => parameters.Length == 1 ? (Math.Abs(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "acos" => parameters.Length == 1 ? (Math.Acos(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "asin" => parameters.Length == 1 ? (Math.Asin(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "atan" => parameters.Length == 1 ? (Math.Atan(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "atan2" => parameters.Length == 2 ? (Math.Atan2(parameters[0], parameters[1])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "avg" => parameters.Length > 0 ? (parameters.Average()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "ceil" => parameters.Length == 1 ? (Math.Ceiling(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "clamp" => parameters.Length == 3 ? Math.Min(Math.Max(parameters[0], parameters[1]), parameters[2]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "cos" => parameters.Length == 1 ? (Math.Cos(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "cosh" => parameters.Length == 1 ? (Math.Cosh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "abs" => parameters.Length == 1 ? (Math.Abs(parameters[0])) : throw InvalidParameterCount(functionName),
+                "acos" => parameters.Length == 1 ? (Math.Acos(parameters[0])) : throw InvalidParameterCount(functionName),
+                "asin" => parameters.Length == 1 ? (Math.Asin(parameters[0])) : throw InvalidParameterCount(functionName),
+                "atan" => parameters.Length == 1 ? (Math.Atan(parameters[0])) : throw InvalidParameterCount(functionName),
+                "atan2" => parameters.Length == 2 ? (Math.Atan2(parameters[0], parameters[1])) : throw InvalidParameterCount(functionName),
+                "avg" => parameters.Length > 0 ? Sum(parameters) / parameters.Length : throw InvalidParameterCount(functionName),
+                "ceil" => parameters.Length == 1 ? (Math.Ceiling(parameters[0])) : throw InvalidParameterCount(functionName),
+                "clamp" => parameters.Length == 3 ? Math.Min(Math.Max(parameters[0], parameters[1]), parameters[2]) : throw InvalidParameterCount(functionName),
+                "cos" => parameters.Length == 1 ? (Math.Cos(parameters[0])) : throw InvalidParameterCount(functionName),
+                "cosh" => parameters.Length == 1 ? (Math.Cosh(parameters[0])) : throw InvalidParameterCount(functionName),
                 "count" => parameters.Length,
-                "deg" => parameters.Length == 1 ? parameters[0] * 180.0 / Math.PI : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "e" => parameters.Length == 0 ? Math.E : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "exp" => parameters.Length == 1 ? (Math.Exp(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "floor" => parameters.Length == 1 ? (Math.Floor(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "hypot" => parameters.Length > 0 ? Math.Sqrt(parameters.Sum(x => x * x)) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "if" => parameters.Length == 3 ? parameters[0] != 0 ? parameters[1] : parameters[2] : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "log" => parameters.Length == 1 ? (Math.Log(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "log10" => parameters.Length == 1 ? (Math.Log10(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "logn" => parameters.Length == 2 ? Math.Log(parameters[0], parameters[1]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "max" => parameters.Length > 0 ? (parameters.Max()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "min" => parameters.Length > 0 ? (parameters.Min()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "modpow" => parameters.Length == 3 ? ((double)BigInteger.ModPow((BigInteger)parameters[0], (BigInteger)parameters[1], (BigInteger)parameters[2])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "not" => parameters.Length == 1 ? ((parameters[0] == 0) ? 1 : 0) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "pi" => parameters.Length == 0 ? Math.PI : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "pow" => parameters.Length == 2 ? (Math.Pow(parameters[0], parameters[1])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "prod" => parameters.Length > 0 ? parameters.Aggregate(1.0, (a, b) => a * b) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "rad" => parameters.Length == 1 ? parameters[0] * Math.PI / 180.0 : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "rand" => parameters.Length == 0 ? Random.Shared.NextDouble() : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "round" => (parameters.Length == 1 || parameters.Length == 2) ? parameters.Length == 1 ? Math.Round(parameters[0]) : Math.Round(parameters[0], (int)parameters[1]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "sign" => parameters.Length == 1 ? Math.Sign(parameters[0]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "sin" => parameters.Length == 1 ? (Math.Sin(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "sinh" => parameters.Length == 1 ? (Math.Sinh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "sqrt" => parameters.Length == 1 ? (Math.Sqrt(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "sum" => parameters.Length > 0 ? (parameters.Sum()) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "tan" => parameters.Length == 1 ? (Math.Tan(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "tanh" => parameters.Length == 1 ? (Math.Tanh(parameters[0])) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
-                "trunc" => parameters.Length == 1 ? Math.Truncate(parameters[0]) : throw new Exception($"Invalid number of parameters passed to function: {functionName}"),
+                "deg" => parameters.Length == 1 ? parameters[0] * 180.0 / Math.PI : throw InvalidParameterCount(functionName),
+                "e" => parameters.Length == 0 ? Math.E : throw InvalidParameterCount(functionName),
+                "exp" => parameters.Length == 1 ? (Math.Exp(parameters[0])) : throw InvalidParameterCount(functionName),
+                "floor" => parameters.Length == 1 ? (Math.Floor(parameters[0])) : throw InvalidParameterCount(functionName),
+                "hypot" => parameters.Length > 0 ? Math.Sqrt(SumOfSquares(parameters)) : throw InvalidParameterCount(functionName),
+                "if" => parameters.Length == 3 ? parameters[0] != 0 ? parameters[1] : parameters[2] : throw InvalidParameterCount(functionName),
+                "log" => parameters.Length == 1 ? (Math.Log(parameters[0])) : throw InvalidParameterCount(functionName),
+                "log10" => parameters.Length == 1 ? (Math.Log10(parameters[0])) : throw InvalidParameterCount(functionName),
+                "logn" => parameters.Length == 2 ? Math.Log(parameters[0], parameters[1]) : throw InvalidParameterCount(functionName),
+                "max" => parameters.Length > 0 ? Max(parameters) : throw InvalidParameterCount(functionName),
+                "min" => parameters.Length > 0 ? Min(parameters) : throw InvalidParameterCount(functionName),
+                "modpow" => parameters.Length == 3 ? ((double)BigInteger.ModPow((BigInteger)parameters[0], (BigInteger)parameters[1], (BigInteger)parameters[2])) : throw InvalidParameterCount(functionName),
+                "not" => parameters.Length == 1 ? ((parameters[0] == 0) ? 1 : 0) : throw InvalidParameterCount(functionName),
+                "pi" => parameters.Length == 0 ? Math.PI : throw InvalidParameterCount(functionName),
+                "pow" => parameters.Length == 2 ? (Math.Pow(parameters[0], parameters[1])) : throw InvalidParameterCount(functionName),
+                "prod" => parameters.Length > 0 ? Product(parameters) : throw InvalidParameterCount(functionName),
+                "rad" => parameters.Length == 1 ? parameters[0] * Math.PI / 180.0 : throw InvalidParameterCount(functionName),
+                "rand" => parameters.Length == 0 ? Random.Shared.NextDouble() : throw InvalidParameterCount(functionName),
+                "round" => (parameters.Length == 1 || parameters.Length == 2) ? parameters.Length == 1 ? Math.Round(parameters[0]) : Math.Round(parameters[0], (int)parameters[1]) : throw InvalidParameterCount(functionName),
+                "sign" => parameters.Length == 1 ? Math.Sign(parameters[0]) : throw InvalidParameterCount(functionName),
+                "sin" => parameters.Length == 1 ? (Math.Sin(parameters[0])) : throw InvalidParameterCount(functionName),
+                "sinh" => parameters.Length == 1 ? (Math.Sinh(parameters[0])) : throw InvalidParameterCount(functionName),
+                "sqrt" => parameters.Length == 1 ? (Math.Sqrt(parameters[0])) : throw InvalidParameterCount(functionName),
+                "sum" => parameters.Length > 0 ? Sum(parameters) : throw InvalidParameterCount(functionName),
+                "tan" => parameters.Length == 1 ? (Math.Tan(parameters[0])) : throw InvalidParameterCount(functionName),
+                "tanh" => parameters.Length == 1 ? (Math.Tanh(parameters[0])) : throw InvalidParameterCount(functionName),
+                "trunc" => parameters.Length == 1 ? Math.Truncate(parameters[0]) : throw InvalidParameterCount(functionName),
                 _ => throw new Exception($"Undefined native function: {functionName}"),
             };
+        }
+
+        private static Exception InvalidParameterCount(string functionName)
+            => new($"Invalid number of parameters passed to function: {functionName}");
+
+        private static double Sum(ReadOnlySpan<double> values)
+        {
+            double sum = 0;
+            foreach (var value in values) sum += value;
+            return sum;
+        }
+
+        private static double SumOfSquares(ReadOnlySpan<double> values)
+        {
+            double sum = 0;
+            foreach (var value in values) sum += value * value;
+            return sum;
+        }
+
+        private static double Product(ReadOnlySpan<double> values)
+        {
+            double product = 1.0;
+            foreach (var value in values) product *= value;
+            return product;
+        }
+
+        private static double Max(ReadOnlySpan<double> values)
+        {
+            double max = values[0];
+            for (int i = 1; i < values.Length; i++) max = Math.Max(max, values[i]);
+            return max;
+        }
+
+        private static double Min(ReadOnlySpan<double> values)
+        {
+            double min = values[0];
+            for (int i = 1; i < values.Length; i++) min = Math.Min(min, values[i]);
+            return min;
         }
     }
 }
