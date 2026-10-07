@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -10,9 +9,6 @@ namespace NTDLS.ExpressionParser
     /// </summary>
     public class Expression
     {
-        private static readonly double[] _powersOfTen =
-            [1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22];
-
         /// <summary>
         /// Shared options for expressions created without any. Never exposed, so it can never be modified.
         /// </summary>
@@ -21,9 +17,20 @@ namespace NTDLS.ExpressionParser
         private Dictionary<string, double?>? _definedParameters;
         private Dictionary<string, ExpressionFunction>? _expressionFunctions;
 
+        private readonly CachedState? _template;
+        private readonly CompiledExpression? _compiled;
+        private ExpressionState? _state;
+
         internal Sanitized Sanitized { get; set; }
-        internal ExpressionState State { get; set; }
         internal ExpressionOptions Options { get; set; }
+
+        /// <summary>
+        /// State for the string based evaluator, created on first use. It is not needed when the expression
+        /// was compiled, unless the work is being shown.
+        /// </summary>
+        internal ExpressionState State => _state ??= _template != null
+            ? _template.State.Clone(_template.Sanitized)
+            : new ExpressionState(Sanitized, Options);
         internal Dictionary<string, ExpressionFunction> ExpressionFunctions => _expressionFunctions ??= new();
 
         /// <summary>
@@ -57,13 +64,14 @@ namespace NTDLS.ExpressionParser
                     cached = CreateCachedState(_cacheKey, text, Options);
                 }
 
+                _template = cached;
+                _compiled = cached.Compiled;
                 Sanitized = cached.Sanitized;
-                State = cached.State.Clone(cached.Sanitized);
             }
             else
             {
                 Sanitized = Sanitizer.Process(text.ToLowerInvariant(), Options);
-                State = new ExpressionState(Sanitized, Options);
+                _compiled = CompiledExpression.TryCompile(Sanitized, Options);
             }
         }
 
@@ -75,7 +83,7 @@ namespace NTDLS.ExpressionParser
 
                 var sanitized = Sanitizer.Process(text.ToLowerInvariant(), options);
                 var state = new ExpressionState(sanitized, options);
-                return new CachedState(sanitized, state);
+                return new CachedState(sanitized, state, CompiledExpression.TryCompile(sanitized, options));
             }) ?? throw new Exception("Failed to create persistent cache.");
         }
 
@@ -87,6 +95,17 @@ namespace NTDLS.ExpressionParser
         /// Evaluates the expression, processing all variables and functions.
         /// </summary>
         public double? Evaluate()
+        {
+            if (_compiled != null)
+                return _compiled.Evaluate(_definedParameters, _expressionFunctions, Options.DefaultNullValue);
+
+            return EvaluateText();
+        }
+
+        /// <summary>
+        /// Evaluates the expression using the string based evaluator.
+        /// </summary>
+        private double? EvaluateText()
         {
             State.Reset(Sanitized);
             State.ApplyParameters(Sanitized, _definedParameters);
@@ -388,51 +407,7 @@ namespace NTDLS.ExpressionParser
             }
 
             isUserVariableDerived = false;
-
-            if (Options.UseFastFloatingPointParser)
-            {
-                int i = 0;
-                bool isNegative = false;
-
-                if (span[0] == '-' || span[0] == '+')
-                {
-                    isNegative = span[0] == '-';
-                    i++; //Skip the explicit sign.
-                }
-
-                ulong mantissa = 0;
-                int significantDigits = 0;
-                int fractionDigits = 0;
-                bool seenDecimal = false;
-
-                for (; i < span.Length; i++)
-                {
-                    int digit = span[i] - '0';
-                    if ((uint)digit <= 9)
-                    {
-                        if (significantDigits > 0 || digit != 0)
-                            significantDigits++;
-                        mantissa = mantissa * 10 + (uint)digit;
-                        if (seenDecimal)
-                            fractionDigits++;
-                    }
-                    else if (span[i] == '.' && !seenDecimal)
-                    {
-                        seenDecimal = true;
-                    }
-                    else throw new FormatException("Invalid character in input string.");
-                }
-
-                //When both the mantissa and the power of ten are exactly representable, a single
-                //  division yields the correctly rounded result. Otherwise fall back to the full parser.
-                if (significantDigits <= 15 && fractionDigits < _powersOfTen.Length)
-                {
-                    double result = fractionDigits == 0 ? mantissa : mantissa / _powersOfTen[fractionDigits];
-                    return isNegative ? -result : result;
-                }
-            }
-
-            return double.Parse(span, CultureInfo.InvariantCulture);
+            return Utility.ParseNumber(span, Options.UseFastFloatingPointParser);
         }
     }
 }

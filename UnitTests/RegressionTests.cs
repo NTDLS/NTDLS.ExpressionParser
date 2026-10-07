@@ -198,6 +198,85 @@ namespace UnitTests
         }
 
         [Fact]
+        public void Constant_Errors_Are_Raised_At_Evaluation()
+        {
+            //Constant folding must not move errors from Evaluate() into the constructor.
+            var expr = new Expression("1 / 0 + 2");
+            Assert.ThrowsAny<Exception>(() => expr.Evaluate());
+        }
+
+        [Fact]
+        public void Rand_Is_Not_Folded()
+        {
+            var expr = new Expression("rand()");
+            var values = Enumerable.Range(0, 20).Select(_ => expr.Evaluate()).Distinct().Count();
+            Assert.True(values > 1);
+        }
+
+        [Fact]
+        public void Compiled_And_ShowWork_Agree()
+        {
+            var expr = new Expression("max(a, 2) * -(b + 1) >= -10 && !c || null");
+            expr.SetParameter("a", 3);
+            expr.SetParameter("b", 2);
+            expr.SetParameter("c", (double?)null);
+            Assert.Equal(expr.Evaluate(out _), expr.Evaluate());
+        }
+
+        [Fact]
+        public void Deeply_Nested_Expression()
+        {
+            var text = string.Concat(Enumerable.Repeat("(1+", 100)) + "1" + new string(')', 100);
+            Assert.Equal(101, Eval(text));
+        }
+
+        [Fact]
+        public void Extremely_Nested_Expression_Does_Not_Overflow_Stack()
+        {
+            //Too deep for the recursive compiler, must fall back to the string evaluator rather than crash the process.
+            var text = new string('(', 5000) + "1" + new string(')', 5000);
+            Assert.Equal(1, Eval(text));
+        }
+
+        [Theory]
+        [InlineData("1 + --2", 3)]
+        [InlineData("1 - - 2", 3)]
+        [InlineData("1 ---2", -1)]
+        [InlineData("2 * -+3", -6)]
+        [InlineData("--5", 5)]
+        [InlineData("-(-(-5))", -5)]
+        public void Consecutive_Signs_Collapse(string text, double expected)
+        {
+            Assert.Equal(expected, Eval(text));
+            Assert.Equal(expected, new Expression(text).Evaluate(out _)); //String evaluator must agree.
+        }
+
+        [Theory]
+        [InlineData("()")]
+        [InlineData("1 +")]
+        [InlineData("*2")]
+        [InlineData("(1 +)")]
+        [InlineData("!=1")]
+        [InlineData("2x")]
+        [InlineData("2(3)")]
+        [InlineData("(1)(2)")]
+        [InlineData("2max(1, 2)")]
+        [InlineData("max(1,)")]
+        [InlineData("max(,1)")]
+        public void Malformed_Expression_Is_A_Syntax_Error(string text)
+        {
+            var ex = Assert.ThrowsAny<Exception>(() => new Expression(text, new ExpressionOptions { UseCompileCache = false }));
+            Assert.StartsWith("Syntax error", ex.Message);
+        }
+
+        [Fact]
+        public void Reserved_Placeholder_Character_Is_Rejected()
+        {
+            var ex = Assert.ThrowsAny<Exception>(() => new Expression("$0$ + 1"));
+            Assert.Contains("'$'", ex.Message);
+        }
+
+        [Fact]
         public void Repeated_Static_Evaluation_Is_Stable()
         {
             for (int i = 0; i < 5; i++)
