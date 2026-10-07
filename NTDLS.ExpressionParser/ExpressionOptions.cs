@@ -6,28 +6,33 @@
     public class ExpressionOptions
     {
         /// <summary>
-        /// Gets or sets a value indicating whether or not to cache and reuse the sanitized expression and state.
+        /// Gets or sets a value indicating whether or not to cache and reuse the compiled expression, so that creating
+        /// another Expression with the same text (and options) skips parsing. Entries expire after 5 minutes unused.
         /// </summary>
         public bool UseCompileCache { get; set; } = true;
 
         /// <summary>
-        /// Gets or sets a value indicating whether to use the fast floating-point parser.
+        /// Gets or sets a value indicating whether to use the fast floating-point parser for number literals.
+        /// It is correctly rounded, and falls back to double.Parse for numbers it can not parse exactly.
         /// </summary>
         public bool UseFastFloatingPointParser { get; set; } = true;
 
         /// <summary>
-        /// Gets or sets the number of significant digits used in calculations.
+        /// Gets or sets the number of significant digits used to format numbers when showing the work.
+        /// Calculations always use full double precision.
         /// </summary>
         public ushort Precision { get; set; } = 17;
 
         /// <summary>
-        /// Gets or sets the default value to use when a NULL is encountered in expressions.
+        /// Gets or sets the value to use in place of NULL: for null literals, variables set to null, and custom
+        /// functions that return null. When not set, NULL propagates through operations and the result is NULL.
         /// </summary>
         public double? DefaultNullValue { get; set; } = null;
 
         /// <summary>
-        /// A custom hash to uniquely identify this expression.
-        /// This is useful when the expression is basic but varies by function and/or variables.
+        /// A key to cache the compiled expression under, used instead of the expression text.
+        /// Every expression given the same CustomHash (and options) shares one compiled expression, so it must
+        /// only be reused for identical expression text.
         /// </summary>
         public string? CustomHash { get; set; }
 
