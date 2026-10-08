@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 
 namespace PerfTest
 {
@@ -36,6 +36,20 @@ namespace PerfTest
         const double ExpectedResult = 6140750;
 
         /// <summary>
+        /// For parse + evaluate, every call gets expression text that has never been seen before - the test expression
+        /// with a different constant in place of 1000 - so that no library can be served from a cache. Some caches
+        /// can not be disabled: Jace reuses compiled code for repeated text even with its cache turned off.
+        /// </summary>
+        static string UniqueTestExpression(long constant) => $"10 * ((a + {constant} + ( b )) *  c) * 10";
+
+        /// <summary>
+        /// The result of UniqueTestExpression: 10 * ((5 + constant + 10) * 60.5) * 10.
+        /// </summary>
+        static double UniqueExpectedResult(long constant) => 6050.0 * (15 + constant);
+
+        static long _nextUniqueConstant = 1000;
+
+        /// <summary>
         /// Math operations performed by each evaluation of the test expression, so that op/μs counts operations
         /// rather than evaluations. The same expression is given to every parser, so the count applies to all.
         /// </summary>
@@ -49,12 +63,12 @@ namespace PerfTest
         ///
         /// Parse + evaluate: the setup only creates reusable objects which hold no expression (engines, contexts).
         ///     Every timed call parses the expression, sets the parameters and evaluates it - the case of many
-        ///     different expressions, each evaluated once. Every cache of parsed expressions is disabled, so that
-        ///     no library can skip the parse because it has seen the same text before.
+        ///     different expressions, each evaluated once. Every cache of parsed expressions is disabled, and every
+        ///     call gets text never seen before (see UniqueTestExpression), so no library can skip the parse.
         ///
         /// Each library uses its fastest form for each case.
         /// </summary>
-        static readonly (string Name, Func<Func<double>> Evaluate, Func<Func<double>> ParseAndEvaluate)[] Libraries =
+        static readonly (string Name, Func<Func<double>> Evaluate, Func<Func<string, double>> ParseAndEvaluate)[] Libraries =
         [
             ("NTDLS", SetupNtdls, SetupNtdlsParse),
             ("NCalc", SetupNCalc, SetupNCalcParse),
@@ -78,15 +92,18 @@ namespace PerfTest
             Console.WriteLine();
             Console.WriteLine($"Evaluate (parsed once) - times are in ms per {EvaluateIterations:n0} evaluations:");
             foreach (var library in Libraries)
-                Measure(library.Name, library.Evaluate, EvaluateIterations, minRounds: 5);
+            {
+                var setup = library.Evaluate;
+                Measure(library.Name, () => { var evaluate = setup(); return _ => evaluate(); }, EvaluateIterations, minRounds: 5, uniqueExpressions: false);
+            }
 
             Console.WriteLine();
-            Console.WriteLine($"Parse + evaluate (parsed every time, no caching) - times are in ms per {ParseIterations:n0} evaluations:");
+            Console.WriteLine($"Parse + evaluate (a new expression every time, no caching) - times are in ms per {ParseIterations:n0} evaluations:");
             foreach (var library in Libraries)
-                Measure(library.Name, library.ParseAndEvaluate, ParseIterations, minRounds: 2);
+                Measure(library.Name, library.ParseAndEvaluate, ParseIterations, minRounds: 2, uniqueExpressions: true);
         }
 
-        static void Measure(string name, Func<Func<double>> setup, int iterations, int minRounds)
+        static void Measure(string name, Func<Func<string, double>> setup, int iterations, int minRounds, bool uniqueExpressions)
         {
             try
             {
@@ -95,9 +112,9 @@ namespace PerfTest
 
                 for (int round = 0; round < MaxRounds && (round < minRounds || budget.Elapsed < TimeBudgetPerLibrary); round++)
                 {
-                    var totalTime = Perform(setup, iterations);
-                    totalTime += Perform(setup, iterations);
-                    totalTime += Perform(setup, iterations);
+                    var totalTime = Perform(setup, iterations, uniqueExpressions);
+                    totalTime += Perform(setup, iterations, uniqueExpressions);
+                    totalTime += Perform(setup, iterations, uniqueExpressions);
 
                     timings.Add(totalTime / 3);
                 }
@@ -114,16 +131,26 @@ namespace PerfTest
             }
         }
 
-        static double Perform(Func<Func<double>> setup, int iterations)
+        static double Perform(Func<Func<string, double>> setup, int iterations, bool uniqueExpressions)
         {
             var evaluate = setup();
+
+            //The expressions (and their results) are prepared before timing starts.
+            var texts = new string[iterations];
+            var expected = new double[iterations];
+            for (int i = 0; i < iterations; i++)
+            {
+                long constant = uniqueExpressions ? _nextUniqueConstant++ : 1000;
+                texts[i] = uniqueExpressions ? UniqueTestExpression(constant) : TestExpression;
+                expected[i] = uniqueExpressions ? UniqueExpectedResult(constant) : ExpectedResult;
+            }
 
             var stopwatch = Stopwatch.StartNew();
             for (int i = 0; i < iterations; i++)
             {
-                double result = evaluate();
-                if (Math.Abs(result - ExpectedResult) > 1e-6)
-                    throw new Exception($"Unexpected result: {result}");
+                double result = evaluate(texts[i]);
+                if (Math.Abs(result - expected[i]) > 1e-6)
+                    throw new Exception($"Unexpected result: {result}, expected {expected[i]}");
             }
             stopwatch.Stop();
 
@@ -132,9 +159,9 @@ namespace PerfTest
 
         #region NTDLS.
 
-        static NTDLS.ExpressionParser.Expression NewNtdls(NTDLS.ExpressionParser.ExpressionOptions? options = null)
+        static NTDLS.ExpressionParser.Expression NewNtdls(string text, NTDLS.ExpressionParser.ExpressionOptions? options = null)
         {
-            var expression = new NTDLS.ExpressionParser.Expression(TestExpression, options);
+            var expression = new NTDLS.ExpressionParser.Expression(text, options);
             foreach (var parameter in TestParameters)
                 expression.SetParameter(parameter.Key, parameter.Value);
             return expression;
@@ -142,23 +169,23 @@ namespace PerfTest
 
         static Func<double> SetupNtdls()
         {
-            var expression = NewNtdls();
+            var expression = NewNtdls(TestExpression);
             return () => expression.Evaluate() ?? double.NaN;
         }
 
-        static Func<double> SetupNtdlsParse()
+        static Func<string, double> SetupNtdlsParse()
         {
             var options = new NTDLS.ExpressionParser.ExpressionOptions { UseCompileCache = false };
-            return () => NewNtdls(options).Evaluate() ?? double.NaN;
+            return text => NewNtdls(text, options).Evaluate() ?? double.NaN;
         }
 
         #endregion
 
         #region NCalc.
 
-        static NCalc.Expression NewNCalc(NCalc.ExpressionOptions options = NCalc.ExpressionOptions.None)
+        static NCalc.Expression NewNCalc(string text, NCalc.ExpressionOptions options = NCalc.ExpressionOptions.None)
         {
-            var expression = new NCalc.Expression(TestExpression, options);
+            var expression = new NCalc.Expression(text, options);
             foreach (var parameter in TestParameters)
                 expression.Parameters[parameter.Key] = parameter.Value;
             return expression;
@@ -166,12 +193,12 @@ namespace PerfTest
 
         static Func<double> SetupNCalc()
         {
-            var expression = NewNCalc();
+            var expression = NewNCalc(TestExpression);
             return () => Convert.ToDouble(expression.Evaluate());
         }
 
-        static Func<double> SetupNCalcParse()
-            => () => Convert.ToDouble(NewNCalc(NCalc.ExpressionOptions.NoCache).Evaluate());
+        static Func<string, double> SetupNCalcParse()
+            => text => Convert.ToDouble(NewNCalc(text, NCalc.ExpressionOptions.NoCache).Evaluate());
 
         #endregion
 
@@ -194,14 +221,14 @@ namespace PerfTest
         /// Expect ~2 ms per call: compiling emits IL (~0.3 ms), and the first Evaluate() of that IL makes the .NET JIT
         /// compile it to machine code (~1.9 ms). Flee has no interpreter, so a one-off expression always pays both.
         /// </summary>
-        static Func<double> SetupFleeParse()
+        static Func<string, double> SetupFleeParse()
         {
             var context = new Flee.PublicTypes.ExpressionContext();
-            return () =>
+            return text =>
             {
                 foreach (var parameter in TestParameters)
                     context.Variables[parameter.Key] = parameter.Value;
-                return context.CompileGeneric<double>(TestExpression).Evaluate();
+                return context.CompileGeneric<double>(text).Evaluate();
             };
         }
 
@@ -221,13 +248,13 @@ namespace PerfTest
         }
 
         /// <summary>
-        /// Jace caches built formulas by default. With the cache disabled, its compiled mode is still faster
-        /// than its interpreted mode for a single evaluation.
+        /// Jace caches built formulas by default, and still reuses compiled code for repeated text with that cache
+        /// disabled - which unique expression text defeats. Each new expression is compiled and JIT compiled.
         /// </summary>
-        static Func<double> SetupJaceParse()
+        static Func<string, double> SetupJaceParse()
         {
             var engine = new Jace.CalculationEngine(new Jace.JaceOptions { CacheEnabled = false });
-            return () => engine.Build(TestExpression)(new Dictionary<string, double>(TestParameters));
+            return text => engine.Build(text)(new Dictionary<string, double>(TestParameters));
         }
 
         #endregion
@@ -241,8 +268,8 @@ namespace PerfTest
             return () => expression.calculate();
         }
 
-        static Func<double> SetupMXparserParse()
-            => () => new org.mariuszgromada.math.mxparser.Expression(TestExpression,
+        static Func<string, double> SetupMXparserParse()
+            => text => new org.mariuszgromada.math.mxparser.Expression(text,
                 TestParameters.Select(p => new org.mariuszgromada.math.mxparser.Argument(p.Key, p.Value)).ToArray()).calculate();
 
         #endregion
@@ -263,10 +290,10 @@ namespace PerfTest
         /// <summary>
         /// For a single evaluation MathEvaluator's interpreter is far faster than compiling (~3 μs vs ~230 μs).
         /// </summary>
-        static Func<double> SetupMathEvaluatorParse()
+        static Func<string, double> SetupMathEvaluatorParse()
         {
             var context = new MathEvaluation.Context.DotNetStandardMathContext();
-            return () => new MathEvaluation.MathExpression(TestExpression, context)
+            return text => new MathEvaluation.MathExpression(text, context)
                 .Evaluate(new Dictionary<string, double>(TestParameters));
         }
 
@@ -290,10 +317,10 @@ namespace PerfTest
             return () => ((xFunc.Maths.Expressions.NumberValue)expression.Execute(parameters)).Number;
         }
 
-        static Func<double> SetupXFuncParse()
+        static Func<string, double> SetupXFuncParse()
         {
             var processor = new xFunc.Maths.Processor();
-            return () => ((xFunc.Maths.Expressions.NumberValue)processor.Parse(TestExpression).Execute(NewXFuncParameters())).Number;
+            return text => ((xFunc.Maths.Expressions.NumberValue)processor.Parse(text).Execute(NewXFuncParameters())).Number;
         }
 
         #endregion
@@ -314,10 +341,10 @@ namespace PerfTest
         /// <summary>
         /// Parses with the FormulaParser directly, which bypasses the evaluator's formula cache.
         /// </summary>
-        static Func<double> SetupNoStringEvaluatingParse()
+        static Func<string, double> SetupNoStringEvaluatingParse()
         {
             var facade = NoStringEvaluating.NoStringEvaluator.CreateFacade(_ => { });
-            return () => facade.Evaluator.CalcNumber(facade.FormulaParser.Parse(TestExpression), NewNoStringVariables());
+            return text => facade.Evaluator.CalcNumber(facade.FormulaParser.Parse(text), NewNoStringVariables());
         }
 
         #endregion
@@ -342,13 +369,13 @@ namespace PerfTest
         /// <summary>
         /// The parser caches parsed expressions by text, so its cache is cleared before every parse.
         /// </summary>
-        static Func<double> SetupCalcExprParse()
+        static Func<string, double> SetupCalcExprParse()
         {
             var parser = new CalcExpr.Parsing.Parser();
-            return () =>
+            return text =>
             {
                 parser.ClearCache();
-                return ((CalcExpr.Expressions.Terminals.Number)parser.Parse(TestExpression).Evaluate(NewCalcExprContext())).Value;
+                return ((CalcExpr.Expressions.Terminals.Number)parser.Parse(text).Evaluate(NewCalcExprContext())).Value;
             };
         }
 
@@ -368,14 +395,14 @@ namespace PerfTest
             return () => parser.Parse(tokens);
         }
 
-        static Func<double> SetupMathosParse()
+        static Func<string, double> SetupMathosParse()
         {
             var parser = new Mathos.Parser.MathParser();
-            return () =>
+            return text =>
             {
                 foreach (var parameter in TestParameters)
                     parser.LocalVariables[parameter.Key] = parameter.Value;
-                return parser.Parse(TestExpression);
+                return parser.Parse(text);
             };
         }
 
