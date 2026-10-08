@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,20 +12,24 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Copyright>Copyright © 2026 NetworkDLS</Copyright>
     <Description>
-      A mathematics parsing engine for .net. It supports expression nesting, custom variables, custom functions all standard mathematical operations for integer, decimal (floating point), logic and bitwise.
-      It addition to the custom functions and variables, these are built in: ACOS, ASIN, ATAN, ATAN2, LDEXP, SINH, COSH, TANH, LOG, LOG10, EXP, MODPOW, SQRT, POW, FLOOR, CEIL, NOT, AVG, SUM, TAN, ATAN, SIN, COS, ABS.
+      A fast mathematics parsing engine for .NET. It supports expression nesting, variables, custom functions and all standard mathematical operations for integer, decimal (floating point), logic and bitwise. Expressions are compiled once and evaluated without allocating, and nulls are supported.
+      In addition to custom functions and variables, these are built in: abs, acos, asin, atan, atan2, avg, ceil, clamp, cos, cosh, count, deg, e, exp, floor, hypot, if, log, log10, logn, max, min, modpow, not, pi, pow, prod, rad, rand, round, sign, sin, sinh, sqrt, sum, tan, tanh, trunc.
     </Description>
     <PackageProjectUrl>https://github.com/NTDLS/NTDLS.ExpressionParser</PackageProjectUrl>
     <RepositoryUrl>https://github.com/NTDLS/NTDLS.ExpressionParser</RepositoryUrl>
     <PackageTags>expression-parser;math;math-parser;expression;equation;mathematics</PackageTags>
     <PackageReleaseNotes>
-		Compiled expression optimizations.
-	</PackageReleaseNotes>
+      Rewritten engine: expressions are parsed and compiled in a single pass to a program that evaluates without allocating (~44 ns with variables, ~0.5 μs to parse and evaluate a new expression).
+      New: OperationCount, the == operator, unary ~ (bitwise NOT), show work lists every operation, and no limit on nesting depth.
+      Many parsing bugs fixed, including variables replaced inside function names, functions without parameters, negated groups and variables, signs after comparisons, decimal precision, and operands separated only by whitespace.
+      Behavior changes: operator precedence now follows C, syntax errors are thrown by the constructor, show work has a new format, and malformed input (e.g. "a b", "a &lt; = b", "max(1,)", "$") is rejected.
+      See the release notes on GitHub for details.
+    </PackageReleaseNotes>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Authors>NetworkDLS</Authors>
     <Company>NetworkDLS</Company>
-    <version>1.6.1</version>
+    <version>1.6.3</version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>128.png</PackageIcon>
   </PropertyGroup>
